@@ -19,8 +19,8 @@ A self-contained Docker image that builds and runs a [Project Quarm](https://www
 
 **1. Clone this repository**
 ```bash
-git clone https://github.com/adonislive/quarm-docker.git
-cd quarm-docker
+git clone https://github.com/adonislive/QuarmDocker.git
+cd QuarmDocker
 ```
 
 **2. Build the image**
