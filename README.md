@@ -11,7 +11,7 @@ A self-contained Docker image that builds and runs a [Project Quarm](https://www
 - [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/) (Windows/Mac) or Docker Engine (Linux)
 - 8GB RAM recommended
 - 10GB free disk space
-- [TAKP client]+[Quarm Patcher]+(optional)[Zeal]
+- A [TAKP client](https://wiki.takp.info/index.php/Getting_Started)
 
 ---
 
@@ -63,6 +63,50 @@ docker exec quarm-server mariadb -e "UPDATE account SET status=255 WHERE name='Y
 ```
 
 Log out and back in for the change to take effect.
+
+---
+
+## LAN Support (Other Machines on Your Network)
+
+To allow other machines on your LAN to connect:
+
+**1. Find your LAN IP** on the server machine:
+```powershell
+ipconfig
+```
+Look for `IPv4 Address` under your main adapter — it will look like `192.168.1.x`.
+
+**2. Edit `docker-compose.yml`** and change `SERVER_ADDRESS` to your LAN IP:
+```yaml
+environment:
+  - SERVER_ADDRESS=192.168.1.x
+```
+
+**3. Restart the container** (no rebuild needed):
+```bash
+docker compose down
+docker compose up -d
+```
+
+**4. On the connecting machine**, edit `eqhost.txt` to point to the server's LAN IP:
+```
+[Registration Servers]
+{
+"192.168.1.x:6000"
+}
+[Login Servers]
+{
+"192.168.1.x:6000"
+}
+```
+
+**5. If the client still can't connect**, Windows Firewall may be blocking the ports. Run this on the server machine in PowerShell as Administrator:
+```powershell
+New-NetFirewallRule -DisplayName "Quarm EQ Ports UDP" -Direction Inbound -Action Allow -Protocol UDP -LocalPort 6000,9000,7778,7000-7400
+New-NetFirewallRule -DisplayName "Quarm EQ Ports TCP" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 5998,9000,7000-7400
+```
+
+> Your own machine always works with `127.0.0.1` regardless of what `SERVER_ADDRESS` is set to.
 
 ---
 
