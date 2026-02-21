@@ -1,0 +1,44 @@
+{
+    "server": {
+        "zones": {
+            "defaultstatus": "0",
+            "ports": {
+                "low":  "7000",
+                "high": "7400"
+            }
+        },
+        "world": {
+            "shortname":    "${SERVER_SHORTNAME}",
+            "longname":     "${SERVER_LONGNAME}",
+            "address":      "${SERVER_ADDRESS}",
+            "localaddress": "0.0.0.0",
+            "loginserver1": {
+                "account":  "",
+                "host":     "127.0.0.1",
+                "password": "",
+                "port":     "6000"
+            }
+        },
+        "database": {
+            "db":       "${DB_NAME}",
+            "host":     "${DB_HOST}",
+            "port":     "${DB_PORT}",
+            "username": "${DB_USER}",
+            "password": "${DB_PASS}"
+        },
+        "qsdatabase": {
+            "db":       "${DB_NAME}",
+            "host":     "${DB_HOST}",
+            "port":     "${DB_PORT}",
+            "username": "${DB_USER}",
+            "password": "${DB_PASS}"
+        },
+        "loginserver": {
+            "db":       "${DB_NAME}",
+            "host":     "${DB_HOST}",
+            "port":     "${DB_PORT}",
+            "username": "${DB_USER}",
+            "password": "${DB_PASS}"
+        }
+    }
+}
