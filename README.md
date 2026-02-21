@@ -125,3 +125,7 @@ docker compose up -d
 - **Server**: https://github.com/SecretsOTheP/EQMacEmu
 - **Quests**: https://github.com/SecretsOTheP/quests
 - **Maps**: https://github.com/EQMacEmu/Maps
+
+## Credits
+
+- **Thanks to surron, darius, kicnlag, solar, and secrets for framework, ingenuity, grounding, advice, and space to code**
