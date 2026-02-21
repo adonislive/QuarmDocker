@@ -11,7 +11,7 @@ A self-contained Docker image that builds and runs a [Project Quarm](https://www
 - [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/) (Windows/Mac) or Docker Engine (Linux)
 - 8GB RAM recommended
 - 10GB free disk space
-- A [TAKP client](https://wiki.takp.info/index.php/Getting_Started)
+- [TAKP client]+[Quarm Patcher]+(optional)[Zeal]
 
 ---
 
