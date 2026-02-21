@@ -128,4 +128,5 @@ docker compose up -d
 
 ## Credits
 
-- **Thanks to surron, darius, kicnlag, solar, and secrets for framework, ingenuity, grounding, advice, and space to code**
+- **For this project: Thanks to surron, darius, kicnlag, solar, and secrets for framework, ingenuity, grounding, advice, and space to code**
+- **Based on code frame from EQMacEmuDockerHub at https://github.com/jcon321/EQMacEmuDockerHub**
