@@ -77,6 +77,9 @@ UPDATE launcher SET dynamics=0 WHERE name='zone3';"
 # Fix: account_inventory table is missing from the DB dump — create from source schema
 mariadb --database=quarm -e "source /src/utils/sql/git/required/2025_3_23_created_account_inventory_table.sql"
 
+# Fix: player_event_logs table missing from DB dump
+mariadb --database=quarm -e "source /src/utils/sql/git/required/2024_12_23_player_events_tables.sql"
+
 # Fix: Allow GMs to attack, cast, drop items, and use tradeskill containers like normal players
 mariadb --database=quarm -e "UPDATE rule_values SET rule_value='false' WHERE rule_name='Quarm:EnableAdminChecks';"
 
