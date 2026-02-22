@@ -86,6 +86,9 @@ mariadb --database=quarm -e "UPDATE rule_values SET rule_value='false' WHERE rul
 # Limit connections per IP to 6 (default -1 = unlimited)
 mariadb --database=quarm -e "UPDATE rule_values SET rule_value='6' WHERE rule_name='World:MaxClientsPerIP';"
 
+# Limit concurrent sessions per account to 6 (default -1 = unlimited)
+mariadb --database=quarm -e "UPDATE rule_values SET rule_value='6' WHERE rule_name='World:AccountSessionLimit';"
+
 echo "Preparing environment"
 cd /
 mkdir -p src/build/bin/logs
