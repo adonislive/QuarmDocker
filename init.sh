@@ -83,6 +83,9 @@ mariadb --database=quarm -e "source /src/utils/sql/git/required/2024_12_23_playe
 # Fix: Allow GMs to attack, cast, drop items, and use tradeskill containers like normal players
 mariadb --database=quarm -e "UPDATE rule_values SET rule_value='false' WHERE rule_name='Quarm:EnableAdminChecks';"
 
+# Limit connections per IP to 6 (default -1 = unlimited)
+mariadb --database=quarm -e "UPDATE rule_values SET rule_value='6' WHERE rule_name='World:MaxClientsPerIP';"
+
 echo "Preparing environment"
 cd /
 mkdir -p src/build/bin/logs
