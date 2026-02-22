@@ -82,10 +82,9 @@ environment:
   - SERVER_ADDRESS=192.168.1.x
 ```
 
-**3. Restart the container** (no rebuild needed):
+**3. Rebuild and restart:**
 ```bash
-docker compose down
-docker compose up -d
+docker compose up --build -d
 ```
 
 **4. On the connecting machine**, edit `eqhost.txt` to point to the server's LAN IP:
