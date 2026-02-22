@@ -11,7 +11,7 @@
             "shortname":    "${SERVER_SHORTNAME}",
             "longname":     "${SERVER_LONGNAME}",
             "address":      "${SERVER_ADDRESS}",
-            "localaddress": "0.0.0.0",
+            "localaddress": "127.0.0.1",
             "loginserver1": {
                 "account":  "",
                 "host":     "127.0.0.1",
