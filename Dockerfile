@@ -28,7 +28,9 @@ RUN mkdir data && \
     mv /src/utils/sql/database_full/*.tar.gz .
 
 COPY init.sh .
+RUN chmod +x init.sh && ./init.sh
 RUN ./init.sh
 
 COPY entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/entrypoint.sh
 ENTRYPOINT [ "entrypoint.sh" ]
