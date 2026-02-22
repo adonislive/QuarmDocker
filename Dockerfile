@@ -13,6 +13,9 @@ RUN if [ "$DISABLE_CHECKSUM" = "true" ]; then \
         sed -i '/bool Client::HandleChecksumPacket(const EQApplicationPacket \*app)/,/^{/!b;/^{/a\    return true;' src/world/client.cpp; \
     fi
 
+# Comment out GetWorldPreferredStatus (mirrors TAKP — doesn't work atm)
+RUN sed -i '/GetWorldPreferredStatus/,+2 s|^|//|' src/loginserver/server_manager.cpp
+
 RUN mkdir src/build && \
     cd src/build && \
     cmake -DEQEMU_BUILD_LOGIN=ON -DEQEMU_BUILD_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -G Ninja ..
