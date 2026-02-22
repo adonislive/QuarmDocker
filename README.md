@@ -25,7 +25,7 @@ cd QuarmDocker
 
 **2. Build the image**
 
-This compiles the Quarm server from source and imports the database. It will take **20–40 minutes** on first build.
+This compiles the Quarm server from source and imports the database. It will take **30–45 minutes** on first build.
 ```bash
 docker compose build
 ```
