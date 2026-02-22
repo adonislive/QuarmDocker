@@ -9,9 +9,39 @@ A self-contained Docker image that builds and runs a [Project Quarm](https://www
 ## Requirements
 
 - [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/) (Windows/Mac) or Docker Engine (Linux)
-- 8GB RAM recommended
+- 8GB RAM required (16GB RAM recommended)
 - 10GB free disk space
 - [TAKP client]+[Quarm Patcher]+(optional)[Zeal]
+
+### Windows
+- [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/)
+- WSL2 enabled. If not already set up:
+```
+  wsl --install
+  wsl --set-default-version 2
+```
+- Increase WSL2 memory limit. Create or edit `C:\Users\<YourName>\.wslconfig`:
+```
+  [wsl2]
+  memory=8GB
+  processors=4
+```
+  Then restart WSL: `wsl --shutdown`
+
+### Linux
+- Docker Engine + Compose plugin:
+```bash
+  sudo apt install docker.io docker-compose-plugin
+```
+- Add your user to the docker group to avoid needing sudo:
+```bash
+  sudo usermod -aG docker $USER
+```
+  Log out and back in for this to take effect.
+
+### Mac
+- [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/)
+- Increase Docker Desktop memory to at least 8GB in Settings → Resources
 
 ---
 
