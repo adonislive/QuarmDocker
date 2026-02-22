@@ -29,7 +29,6 @@ RUN mkdir data && \
 
 COPY init.sh .
 RUN chmod +x init.sh && ./init.sh
-RUN ./init.sh
 
 COPY entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/entrypoint.sh
