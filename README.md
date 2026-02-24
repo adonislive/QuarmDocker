@@ -10,7 +10,9 @@ A self-contained Docker image that builds and runs a [Project Quarm](https://www
 - 10GB free disk space
 - TAKP client + [Quarm Patcher](https://github.com/SecretsOTheP/eqemupatcher/releases/) + (optional) [Zeal](https://github.com/CoastalRedwood/Zeal/releases/)
 - [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/) (Windows/Mac) or Docker Engine (Linux)
+
 ---
+
 ## Getting Started
 
 👉 [Download the latest release](https://github.com/adonislive/QuarmDocker/releases)
@@ -19,13 +21,15 @@ Extract the zip to a folder on your computer and follow the Getting Started step
 
 The setup script checks your system, configures the server, builds it, and starts it. Just follow the prompts. The build takes **30–45 minutes** on first run — do not close the window.
 
-**Windows** — double-click `setup.bat`
-**Mac** — double-click `setup.command`
+**Windows** — double-click `setup.bat`  
+**Mac** — double-click `setup.command`  
 **Linux** — open a terminal in the QuarmDocker folder and run:
 ```bash
 chmod +x setup.sh && ./setup.sh
 ```
+
 ---
+
 ## Managing Your Server
 
 Scripts for starting, stopping, backing up, and restoring are in the folder for your OS. Open the readme inside for instructions.
@@ -34,8 +38,10 @@ Scripts for starting, stopping, backing up, and restoring are in the folder for 
 - **Mac**: config/mac/
 - **Linux**: config/linux/
 
-If You Need More Detail See [Manual_Instructions.md](Manual_Instructions.md) for full technical documentation including manual setup, LAN configuration, HeidiSQL access, command line management, and port reference.
+If you need more detail see [Manual_Instructions.md](Manual_Instructions.md) for full technical documentation including manual setup, LAN configuration, HeidiSQL access, command line management, and port reference.
+
 ---
+
 ## Sources
 - **Server**: https://github.com/SecretsOTheP/EQMacEmu
 - **Quests**: https://github.com/SecretsOTheP/quests
