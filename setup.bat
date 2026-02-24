@@ -94,8 +94,8 @@ if not defined lanip (
     echo.
     echo Could not automatically detect a LAN IP address.
     echo.
-    set /p lanip=Please enter your LAN IP address manually (e.g. 192.168.1.100): 
 )
+if not defined lanip set /p lanip=Please enter your LAN IP address manually e.g. 192.168.1.100: 
 
 :ipconfirm
 echo.
@@ -104,7 +104,7 @@ echo.
 set /p ipOk=Is this correct? (Y/N): 
 if /i not "%ipOk%"=="Y" (
     echo.
-    set /p lanip=Please enter your LAN IP address manually (e.g. 192.168.1.100): 
+    set /p lanip=Please enter your LAN IP address manually e.g. 192.168.1.100: 
 )
 
 echo.
