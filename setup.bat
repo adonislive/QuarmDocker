@@ -111,7 +111,7 @@ if /i not "%ipOk%"=="Y" (
 
 echo.
 echo Updating docker-compose.yml with IP %lanip%...
-powershell -Command "(Get-Content docker-compose.yml) -replace 'SERVER_ADDRESS=127.0.0.1', 'SERVER_ADDRESS=%lanip%' | Set-Content docker-compose.yml"
+powershell -Command "$ip='%lanip%'; (Get-Content 'docker-compose.yml') -replace 'SERVER_ADDRESS=127\.0\.0\.1', \"SERVER_ADDRESS=$ip\" | Set-Content 'docker-compose.yml'"
 echo Done.
 echo.
 
