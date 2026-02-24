@@ -79,8 +79,8 @@ echo This means only this machine can connect to the server.
 echo.
 echo If you are not sure, choose local. You can change this later.
 echo.
-set /p lanChoice=Do you want to set up LAN play so other machines can connect? (Y/N): 
-if /i not "%lanChoice%"=="Y" goto buildstep
+set /p lanChoice=Will only this machine connect to the server? (Y/N): 
+if /i not "%lanChoice%"=="N" goto buildstep
 
 echo.
 echo Detecting LAN IP address...
@@ -180,7 +180,7 @@ REM ------------------------------------------------
 REM STEP 7 - Post install checklist
 REM ------------------------------------------------
 :checklist
-if /i "%lanChoice%"=="Y" (
+if /i "%lanChoice%"=="N" (
     set eqip=%lanip%
 ) else (
     set eqip=127.0.0.1
