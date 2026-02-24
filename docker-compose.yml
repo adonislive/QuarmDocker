@@ -1,5 +1,26 @@
-# Force LF line endings for shell scripts regardless of OS
-*.sh text eol=lf
-Dockerfile text eol=lf
-entrypoint.sh text eol=lf
-init.sh text eol=lf
+services:
+  quarm:
+    build:
+      context: .
+      args:
+        DISABLE_CHECKSUM: "true"
+    container_name: quarm-server
+    environment:
+      - SERVER_ADDRESS=127.0.0.1
+    volumes:
+      - quarm-data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+      - "6000:6000/udp"
+      - "5998:5998"
+      - "9000:9000/udp"
+      - "9000:9000"
+      - "7778:7778/udp"
+      - "7375-7400:7375-7400/udp"
+      - "7375-7400:7375-7400"
+      - "7000-7374:7000-7374/udp"
+      - "7000-7374:7000-7374"
+    restart: unless-stopped
+
+volumes:
+  quarm-data:
