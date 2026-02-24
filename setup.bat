@@ -84,20 +84,18 @@ if /i not "%lanChoice%"=="Y" goto buildstep
 
 echo.
 echo Detecting LAN IP address...
+set lanip=
 for /f "tokens=2 delims=:" %%A in ('ipconfig ^| findstr /i "IPv4" ^| findstr "192.168.1. 192.168.0."') do (
-    set lanip=%%A
-    goto ipfound
+    if not defined lanip set lanip=%%A
 )
+if defined lanip set lanip=%lanip: =%
 
-echo.
-echo Could not automatically detect a LAN IP address.
-echo.
-set /p lanip=Please enter your LAN IP address manually (e.g. 192.168.1.100): 
-goto ipconfirm
-
-:ipfound
-REM Trim leading space from IP
-set lanip=%lanip: =%
+if not defined lanip (
+    echo.
+    echo Could not automatically detect a LAN IP address.
+    echo.
+    set /p lanip=Please enter your LAN IP address manually (e.g. 192.168.1.100): 
+)
 
 :ipconfirm
 echo.
@@ -110,8 +108,8 @@ if /i not "%ipOk%"=="Y" (
 )
 
 echo.
-echo Updating docker-compose.yml with IP %lanip%...
-powershell -Command "$ip='%lanip%'; (Get-Content 'docker-compose.yml') -replace 'SERVER_ADDRESS=127\.0\.0\.1', \"SERVER_ADDRESS=$ip\" | Set-Content 'docker-compose.yml'"
+echo Updating server address to %lanip%...
+echo SERVER_ADDRESS=%lanip%> .env
 echo Done.
 echo.
 

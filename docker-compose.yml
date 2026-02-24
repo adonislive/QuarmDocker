@@ -6,7 +6,7 @@ services:
         DISABLE_CHECKSUM: "true"
     container_name: quarm-server
     environment:
-      - SERVER_ADDRESS=127.0.0.1
+      - SERVER_ADDRESS=${SERVER_ADDRESS:-127.0.0.1}
     volumes:
       - quarm-data:/var/lib/mysql
     ports:
