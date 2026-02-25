@@ -22,18 +22,19 @@ echo   8.  List Characters on Account
 echo   9.  Character Info
 echo  10.  Show Inventory
 echo  11.  Show Currency
+echo  12.  Show Account for Character
 echo.
 echo  -- Player Actions --
-echo  12.  Move Character to Bind Point
-echo  13.  Move Character to Zone
-echo  14.  Give Platinum
+echo  13.  Move Character to Bind Point
+echo  14.  Move Character to Zone
+echo  15.  Give Platinum
 echo.
 echo  -- Corpses --
-echo  15.  List All Corpses
-echo  16.  Show Corpses by Character
+echo  16.  List All Corpses
+echo  17.  Show Corpses by Character
 echo.
 echo  -- Server --
-echo  17.  Server Status
+echo  18.  Server Status
 echo.
 echo   0.  Exit
 echo.
@@ -52,12 +53,13 @@ if "%choice%"=="8"  goto list_characters
 if "%choice%"=="9"  goto character_info
 if "%choice%"=="10" goto show_inventory
 if "%choice%"=="11" goto show_currency
-if "%choice%"=="12" goto move_character_to_bind
-if "%choice%"=="13" goto move_character_to_zone
-if "%choice%"=="14" goto give_platinum
-if "%choice%"=="15" goto list_corpses
-if "%choice%"=="16" goto show_corpses_by_character
-if "%choice%"=="17" goto server_status
+if "%choice%"=="12" goto show_account_for_character
+if "%choice%"=="13" goto move_character_to_bind
+if "%choice%"=="14" goto move_character_to_zone
+if "%choice%"=="15" goto give_platinum
+if "%choice%"=="16" goto list_corpses
+if "%choice%"=="17" goto show_corpses_by_character
+if "%choice%"=="18" goto server_status
 
 echo Invalid selection. Please enter a number from the menu.
 echo.
@@ -73,19 +75,6 @@ echo.
 pause
 goto menu
 
-REM ------------------------------------------------
-REM INPUT CHECK - call after set /p for name inputs
-REM Blocks & | < > ^ which would break the command
-REM Usage: call :check_input "%inputvar%" && goto next || goto bad
-REM ------------------------------------------------
-:check_input
-echo %~1 | findstr /r "[&|<>^]" >nul 2>&1
-if %errorlevel% equ 0 (
-    echo ERROR: Input contains invalid characters. Avoid: ^& ^| ^< ^> ^^
-    echo.
-    exit /b 1
-)
-exit /b 0
 
 REM ================================================
 REM  ACCOUNT MANAGEMENT
@@ -108,8 +97,6 @@ if "%acct%"=="" (
     pause
     goto menu
 )
-call :check_input "%acct%"
-if %errorlevel% neq 0 ( pause & goto menu )
 docker exec quarm-server mariadb -e "UPDATE account SET status=255 WHERE LOWER(name)=LOWER('%acct%');" quarm
 if %errorlevel% neq 0 (
     echo ERROR: Query failed. The server may be unavailable.
@@ -139,8 +126,6 @@ if "%acct%"=="" (
     pause
     goto menu
 )
-call :check_input "%acct%"
-if %errorlevel% neq 0 ( pause & goto menu )
 docker exec quarm-server mariadb -e "UPDATE account SET status=0 WHERE LOWER(name)=LOWER('%acct%');" quarm
 if %errorlevel% neq 0 (
     echo ERROR: Query failed. The server may be unavailable.
@@ -162,7 +147,7 @@ if %errorlevel% neq 0 (
     pause
     goto menu
 )
-docker exec quarm-server mariadb -e "SELECT name, status, last_login, LastIPAddress FROM account ORDER BY last_login DESC;" quarm
+docker exec quarm-server mariadb -e "SELECT a.name, a.status, lsa.LastLoginDate, lsa.LastIPAddress FROM account a LEFT JOIN tblLoginServerAccounts lsa ON lsa.AccountName=a.name ORDER BY lsa.LastLoginDate DESC;" quarm
 if %errorlevel% neq 0 (
     echo ERROR: Query failed. The server may be unavailable.
 ) else (
@@ -190,8 +175,6 @@ if "%acct%"=="" (
     pause
     goto menu
 )
-call :check_input "%acct%"
-if %errorlevel% neq 0 ( pause & goto menu )
 REM Use PowerShell to read the password and compute SHA1 hash.
 REM This safely handles any special characters in the password.
 REM Only the resulting hex hash (0-9a-f, no special chars) is passed to mariadb.
@@ -229,12 +212,12 @@ if %errorlevel% neq 0 (
     pause
     goto menu
 )
-docker exec quarm-server mariadb -e "SELECT name, level, class, race, zone_name FROM character_data WHERE online=1;" quarm
+docker exec quarm-server mariadb -e "SELECT cd.name, cd.level, cd.class, cd.race, z.short_name AS zone FROM character_data cd LEFT JOIN zone z ON z.zoneidnumber=cd.zone_id WHERE cd.last_login > UNIX_TIMESTAMP(NOW() - INTERVAL 1 DAY) ORDER BY cd.last_login DESC;" quarm
 if %errorlevel% neq 0 (
     echo ERROR: Query failed. The server may be unavailable.
 ) else (
     echo.
-    echo Note: class and race are numeric IDs.
+    echo Note: Shows characters active in the last 24 hours. class and race are numeric IDs.
 )
 echo.
 pause
@@ -249,7 +232,7 @@ if %errorlevel% neq 0 (
     pause
     goto menu
 )
-docker exec quarm-server mariadb -e "SELECT name, last_login, LastIPAddress FROM account ORDER BY last_login DESC LIMIT 20;" quarm
+docker exec quarm-server mariadb -e "SELECT a.name, lsa.LastLoginDate, lsa.LastIPAddress FROM account a LEFT JOIN tblLoginServerAccounts lsa ON lsa.AccountName=a.name ORDER BY lsa.LastLoginDate DESC LIMIT 20;" quarm
 if %errorlevel% neq 0 (
     echo ERROR: Query failed. The server may be unavailable.
 )
@@ -274,11 +257,9 @@ if "%acct%"=="" (
     pause
     goto menu
 )
-call :check_input "%acct%"
-if %errorlevel% neq 0 ( pause & goto menu )
 echo Note: Only the most recent IP address is stored per account.
 echo.
-docker exec quarm-server mariadb -e "SELECT name, LastIPAddress, last_login FROM account WHERE LOWER(name)=LOWER('%acct%');" quarm
+docker exec quarm-server mariadb -e "SELECT a.name, lsa.LastIPAddress, lsa.LastLoginDate FROM account a LEFT JOIN tblLoginServerAccounts lsa ON lsa.AccountName=a.name WHERE LOWER(a.name)=LOWER('%acct%');" quarm
 if %errorlevel% neq 0 (
     echo ERROR: Query failed. The account may not exist.
 )
@@ -303,9 +284,7 @@ if "%acct%"=="" (
     pause
     goto menu
 )
-call :check_input "%acct%"
-if %errorlevel% neq 0 ( pause & goto menu )
-docker exec quarm-server mariadb -e "SELECT cd.name, cd.level, cd.class, cd.race, cd.zone_name FROM character_data cd JOIN account a ON cd.account_id=a.id WHERE LOWER(a.name)=LOWER('%acct%');" quarm
+docker exec quarm-server mariadb -e "SELECT cd.name, cd.level, cd.class, cd.race, z.short_name AS zone FROM character_data cd JOIN account a ON cd.account_id=a.id LEFT JOIN zone z ON z.zoneidnumber=cd.zone_id WHERE LOWER(a.name)=LOWER('%acct%');" quarm
 if %errorlevel% neq 0 (
     echo ERROR: Query failed. The account may not exist.
 )
@@ -330,9 +309,7 @@ if "%charname%"=="" (
     pause
     goto menu
 )
-call :check_input "%charname%"
-if %errorlevel% neq 0 ( pause & goto menu )
-docker exec quarm-server mariadb -e "SELECT name, level, class, race, zone_name, online, hp, mana FROM character_data WHERE LOWER(name)=LOWER('%charname%');" quarm
+docker exec quarm-server mariadb -e "SELECT cd.name, cd.level, cd.class, cd.race, z.short_name AS zone, cd.cur_hp, cd.mana, cd.endurance, cd.str, cd.sta, cd.agi, cd.dex, cd.int, cd.wis, cd.cha, cd.exp, cd.aa_points, cd.aa_points_spent, cd.aa_exp, cd.e_percent_to_aa, CONCAT(FLOOR(cd.time_played/3600), 'h ', FLOOR((cd.time_played MOD 3600)/60), 'm') AS time_played, FROM_UNIXTIME(cd.last_login) AS last_login FROM character_data cd LEFT JOIN zone z ON z.zoneidnumber=cd.zone_id WHERE LOWER(cd.name)=LOWER('%charname%');" quarm
 if %errorlevel% neq 0 (
     echo ERROR: Query failed. The character may not exist.
 )
@@ -357,8 +334,6 @@ if "%charname%"=="" (
     pause
     goto menu
 )
-call :check_input "%charname%"
-if %errorlevel% neq 0 ( pause & goto menu )
 docker exec quarm-server mariadb -e "SELECT ci.slotid, i.name, ci.charges FROM character_inventory ci JOIN items i ON i.id=ci.itemid JOIN character_data cd ON cd.id=ci.id WHERE LOWER(cd.name)=LOWER('%charname%') ORDER BY ci.slotid;" quarm
 if %errorlevel% neq 0 (
     echo ERROR: Query failed. The character may not exist.
@@ -387,9 +362,32 @@ if "%charname%"=="" (
     pause
     goto menu
 )
-call :check_input "%charname%"
-if %errorlevel% neq 0 ( pause & goto menu )
 docker exec quarm-server mariadb -e "SELECT cc.platinum, cc.gold, cc.silver, cc.copper, cc.platinum_bank, cc.gold_bank, cc.silver_bank, cc.copper_bank, cc.platinum_cursor, cc.gold_cursor, cc.silver_cursor, cc.copper_cursor FROM character_currency cc JOIN character_data cd ON cd.id=cc.id WHERE LOWER(cd.name)=LOWER('%charname%');" quarm
+if %errorlevel% neq 0 (
+    echo ERROR: Query failed. The character may not exist.
+)
+echo.
+pause
+goto menu
+
+:show_account_for_character
+docker exec quarm-server echo ok >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ERROR: Cannot reach the quarm-server container.
+    echo Make sure the server is running - use start.bat to start it.
+    echo.
+    pause
+    goto menu
+)
+set charname=
+set /p charname=Enter character name: 
+if "%charname%"=="" (
+    echo No character name entered.
+    echo.
+    pause
+    goto menu
+)
+docker exec quarm-server mariadb -e "SELECT a.name AS account, a.status, cd.name AS character_name, cd.level, cd.class, cd.race FROM character_data cd JOIN account a ON cd.account_id=a.id WHERE LOWER(cd.name)=LOWER('%charname%');" quarm
 if %errorlevel% neq 0 (
     echo ERROR: Query failed. The character may not exist.
 )
@@ -418,8 +416,9 @@ if "%charname%"=="" (
     pause
     goto menu
 )
-call :check_input "%charname%"
-if %errorlevel% neq 0 ( pause & goto menu )
+echo.
+echo Current location for %charname%:
+docker exec quarm-server mariadb -e "SELECT cd.name, z.short_name AS current_zone, z2.short_name AS bind_zone FROM character_data cd LEFT JOIN zone z ON z.zoneidnumber=cd.zone_id LEFT JOIN character_bind cb ON cb.id=cd.id AND cb.is_home=0 LEFT JOIN zone z2 ON z2.zoneidnumber=cb.zone_id WHERE LOWER(cd.name)=LOWER('%charname%');" quarm
 echo.
 echo WARNING: The character must be logged OUT for this to work.
 echo If they are logged in the server will overwrite this change on logout.
@@ -432,7 +431,7 @@ if /i not "%confirm%"=="Y" (
     pause
     goto menu
 )
-docker exec quarm-server mariadb -e "UPDATE character_data cd JOIN character_bind cb ON cb.id=cd.id JOIN zone z ON z.zoneidnumber=cb.zone_id SET cd.zone_name=z.short_name, cd.x=cb.x, cd.y=cb.y, cd.z=cb.z, cd.heading=cb.heading WHERE LOWER(cd.name)=LOWER('%charname%') AND cb.is_home=0;" quarm
+docker exec quarm-server mariadb -e "UPDATE character_data cd JOIN character_bind cb ON cb.id=cd.id JOIN zone z ON z.zoneidnumber=cb.zone_id SET cd.zone_id=cb.zone_id, cd.x=cb.x, cd.y=cb.y, cd.z=cb.z, cd.heading=cb.heading WHERE LOWER(cd.name)=LOWER('%charname%') AND cb.is_home=0;" quarm
 if %errorlevel% neq 0 (
     echo ERROR: Query failed. The character may not exist.
 ) else (
@@ -460,22 +459,30 @@ if "%charname%"=="" (
     pause
     goto menu
 )
-call :check_input "%charname%"
-if %errorlevel% neq 0 ( pause & goto menu )
 echo.
 echo Enter the zone short name e.g. qeynos, commons, unrest, nektulos
 echo Use the short name not the full name.
 echo.
 set zonename=
-set /p zonename=Enter zone short name: 
+set /p zonename=Enter zone short name (or part of it to search): 
 if "%zonename%"=="" (
     echo No zone name entered.
     echo.
     pause
     goto menu
 )
-call :check_input "%zonename%"
-if %errorlevel% neq 0 ( pause & goto menu )
+echo.
+echo Matching zones:
+docker exec quarm-server mariadb -e "SELECT short_name, long_name FROM zone WHERE LOWER(short_name) LIKE LOWER('%%%zonename%%%') OR LOWER(long_name) LIKE LOWER('%%%zonename%%%') ORDER BY short_name LIMIT 10;" quarm
+echo.
+set zonename=
+set /p zonename=Enter exact zone short name to confirm (or leave blank to cancel): 
+if "%zonename%"=="" (
+    echo Cancelled.
+    echo.
+    pause
+    goto menu
+)
 echo.
 echo WARNING: The character must be logged OUT for this to work.
 echo If they are logged in the server will overwrite this change on logout.
@@ -488,7 +495,7 @@ if /i not "%confirm%"=="Y" (
     pause
     goto menu
 )
-docker exec quarm-server mariadb -e "UPDATE character_data cd JOIN zone z ON LOWER(z.short_name)=LOWER('%zonename%') SET cd.zone_name=z.short_name, cd.x=z.safe_x, cd.y=z.safe_y, cd.z=z.safe_z, cd.heading=z.safe_heading WHERE LOWER(cd.name)=LOWER('%charname%');" quarm
+docker exec quarm-server mariadb -e "UPDATE character_data cd JOIN zone z ON LOWER(z.short_name)=LOWER('%zonename%') SET cd.zone_id=z.zoneidnumber, cd.x=z.safe_x, cd.y=z.safe_y, cd.z=z.safe_z, cd.heading=z.safe_heading WHERE LOWER(cd.name)=LOWER('%charname%');" quarm
 if %errorlevel% neq 0 (
     echo ERROR: Query failed. The character or zone may not exist.
 ) else (
@@ -517,8 +524,6 @@ if "%charname%"=="" (
     pause
     goto menu
 )
-call :check_input "%charname%"
-if %errorlevel% neq 0 ( pause & goto menu )
 set amount=
 set /p amount=Enter amount of platinum to add: 
 if "%amount%"=="" (
@@ -535,6 +540,9 @@ if %errorlevel% neq 0 (
     pause
     goto menu
 )
+echo.
+echo Current currency for %charname%:
+docker exec quarm-server mariadb -e "SELECT cc.platinum AS plat_carried, cc.platinum_bank AS plat_bank FROM character_currency cc JOIN character_data cd ON cd.id=cc.id WHERE LOWER(cd.name)=LOWER('%charname%');" quarm
 echo.
 echo WARNING: The character should be logged OUT for this to work reliably.
 echo If they are logged in the server may overwrite the change on logout.
@@ -596,8 +604,6 @@ if "%charname%"=="" (
     pause
     goto menu
 )
-call :check_input "%charname%"
-if %errorlevel% neq 0 ( pause & goto menu )
 docker exec quarm-server mariadb -e "SELECT cc.charname, z.short_name AS zone, cc.time_of_death, cc.is_rezzed, cc.is_buried, cc.platinum, cc.gold, cc.silver, cc.copper FROM character_corpses cc LEFT JOIN zone z ON z.zoneidnumber=cc.zone_id WHERE LOWER(cc.charname)=LOWER('%charname%') ORDER BY cc.time_of_death DESC;" quarm
 if %errorlevel% neq 0 (
     echo ERROR: Query failed. The character may not exist or has no corpses.
@@ -621,7 +627,7 @@ if %errorlevel% neq 0 (
 )
 echo Checking server processes...
 echo.
-docker exec quarm-server bash -c "pgrep -x mariadbd    >/dev/null 2>&1 && echo 'mariadb    : RUNNING' || echo 'mariadb    : DOWN'; pgrep -x loginserver >/dev/null 2>&1 && echo 'loginserver: RUNNING' || echo 'loginserver: DOWN'; pgrep -x world       >/dev/null 2>&1 && echo 'world      : RUNNING' || echo 'world      : DOWN'; pgrep -x eqlaunch   >/dev/null 2>&1 && echo 'eqlaunch   : RUNNING' || echo 'eqlaunch   : DOWN'; pgrep -x queryserv  >/dev/null 2>&1 && echo 'queryserv  : RUNNING' || echo 'queryserv  : DOWN'; pgrep -x ucs        >/dev/null 2>&1 && echo 'ucs        : RUNNING' || echo 'ucs        : DOWN'; echo ''; ZCOUNT=\$(pgrep -c zone 2>/dev/null || echo 0); echo \"zone       : \$ZCOUNT zone(s) running\""
+docker exec quarm-server bash -c "pgrep -x mariadbd >/dev/null 2>&1 && echo 'mariadb    : RUNNING' || echo 'mariadb    : DOWN'; pgrep -x loginserver >/dev/null 2>&1 && echo 'loginserver: RUNNING' || echo 'loginserver: DOWN'; pgrep -x world >/dev/null 2>&1 && echo 'world      : RUNNING' || echo 'world      : DOWN'; pgrep -x eqlaunch >/dev/null 2>&1 && echo 'eqlaunch   : RUNNING' || echo 'eqlaunch   : DOWN'; pgrep -x queryserv >/dev/null 2>&1 && echo 'queryserv  : RUNNING' || echo 'queryserv  : DOWN'; pgrep -x ucs >/dev/null 2>&1 && echo 'ucs        : RUNNING' || echo 'ucs        : DOWN'; echo zone processes running: ; pgrep -c zone"
 if %errorlevel% neq 0 (
     echo ERROR: Could not check process status.
 )

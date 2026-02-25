@@ -48,7 +48,7 @@ manage.bat
   PLAYER INFO
   -----------
   5.  Who Is Online
-        Shows all characters currently logged in with their level, class, race, and zone.
+        Shows characters active in the last 24 hours with level, class, race, and zone.
         Class and race are shown as numeric IDs.
 
   6.  Show Recent Logins
@@ -62,8 +62,9 @@ manage.bat
         Shows all characters on a specific account with their level, class, race, and zone.
 
   9.  Character Info
-        Shows detailed info for a specific character: level, class, race, zone, online status,
-        current HP, and mana.
+        Shows detailed info for a specific character: level, class, race, current zone,
+        HP, mana, endurance, all stats (str/sta/agi/dex/int/wis/cha), experience,
+        AA points, AA exp, percent-to-AA, time played, and last login.
 
   10. Show Inventory
         Shows all items in a character's inventory with slot ID and charges.
@@ -73,35 +74,42 @@ manage.bat
         Shows all currency for a character: carried, bank, and cursor platinum, gold,
         silver, and copper.
 
+  12. Show Account for Character
+        Reverse lookup — given a character name, shows the account that owns it
+        along with the account's GM status.
+
   PLAYER ACTIONS
   --------------
-  12. Move Character to Bind Point
+  13. Move Character to Bind Point
         Moves a stuck character to their bind point so they can log in safely.
+        Shows the character's current zone and bind zone before confirming.
         The character MUST be logged out before using this. If they are logged in,
         the server will overwrite the change when they log out.
 
-  13. Move Character to Zone
+  14. Move Character to Zone
         Moves a character to the safe spawn point of any zone.
-        Enter the zone short name e.g. qeynos, commons, unrest, nektulos.
+        Type a partial zone name first to search — matching zones are shown with
+        their short name and full name. Then enter the exact short name to confirm.
         The character MUST be logged out before using this.
 
-  14. Give Platinum
+  15. Give Platinum
         Adds platinum to a character's carried currency.
+        Shows current carried and bank platinum before confirming.
         The character should be logged out before using this.
 
   CORPSES
   -------
-  15. List All Corpses
+  16. List All Corpses
         Shows all corpses on the server with character name, zone, time of death,
         rez status, and whether the corpse is buried.
 
-  16. Show Corpses by Character
+  17. Show Corpses by Character
         Shows all corpses belonging to a specific character with zone, time of death,
         rez status, buried status, and any coin on the corpse.
 
   SERVER
   ------
-  17. Server Status
+  18. Server Status
         Shows whether each server process is running: mariadb, loginserver, world,
         eqlaunch, queryserv, ucs, and a count of active zone processes.
 
