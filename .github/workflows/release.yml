@@ -1,0 +1,91 @@
+name: Build Release
+
+# Triggers: manually via GitHub UI, OR automatically when you push a version tag like v1.0.2
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:    # allows clicking "Run workflow" manually in GitHub
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+
+    # -------------------------------------------------------
+    # 1. Check out your repository
+    # -------------------------------------------------------
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # -------------------------------------------------------
+    # 2. Set up MSVC compiler environment
+    #    This is the equivalent of opening the
+    #    "x64 Native Tools Command Prompt for VS"
+    # -------------------------------------------------------
+    - name: Set up MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: x64
+
+    # -------------------------------------------------------
+    # 3. Compile QuarmDockerServer.exe
+    #    Uses the exact same cl.exe command from the top of
+    #    QuarmDockerServer.cpp
+    # -------------------------------------------------------
+    - name: Compile QuarmDockerServer.exe
+      run: |
+        cl /O2 /W3 /EHsc /std:c++17 /DUNICODE /D_UNICODE `
+           /DWINVER=0x0A00 /D_WIN32_WINNT=0x0A00 `
+           QuarmDockerServer.cpp /Fe:QuarmDockerServer.exe `
+           /link /SUBSYSTEM:WINDOWS /MACHINE:X64 `
+           user32.lib gdi32.lib comctl32.lib shell32.lib `
+           shlwapi.lib comdlg32.lib advapi32.lib
+      shell: pwsh
+
+    # -------------------------------------------------------
+    # 4. Install NSIS (the installer compiler)
+    # -------------------------------------------------------
+    - name: Install NSIS
+      run: choco install nsis --yes
+      shell: pwsh
+
+    # -------------------------------------------------------
+    # 5. Install the inetc NSIS plugin
+    #    (used by the installer to download Docker Desktop
+    #    if the user doesn't have it yet)
+    # -------------------------------------------------------
+    - name: Install NSIS inetc plugin
+      run: |
+        $url = "https://nsis.sourceforge.io/mediawiki/images/c/c9/Inetc.zip"
+        Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\inetc.zip"
+        Expand-Archive "$env:TEMP\inetc.zip" -DestinationPath "$env:TEMP\inetc"
+        Copy-Item "$env:TEMP\inetc\Plugins\x86-ansi\inetc.dll" `
+          "C:\Program Files (x86)\NSIS\Plugins\x86-ansi\inetc.dll"
+        Copy-Item "$env:TEMP\inetc\Plugins\x86-unicode\inetc.dll" `
+          "C:\Program Files (x86)\NSIS\Plugins\x86-unicode\inetc.dll"
+      shell: pwsh
+
+    # -------------------------------------------------------
+    # 6. Compile QuarmDockerInstaller.exe
+    #    makensis reads QuarmDockerInstaller.nsi and bundles
+    #    QuarmDockerServer.exe plus all the config files
+    #    into one installer executable
+    # -------------------------------------------------------
+    - name: Compile QuarmDockerInstaller.exe
+      run: |
+        & "C:\Program Files (x86)\NSIS\makensis.exe" QuarmDockerInstaller.nsi
+      shell: pwsh
+
+    # -------------------------------------------------------
+    # 7. Create a GitHub Release and attach the installer
+    #    The release is named after the tag (e.g. v1.0.2)
+    # -------------------------------------------------------
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: QuarmDockerInstaller.exe
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
