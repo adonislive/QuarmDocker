@@ -1,0 +1,48 @@
+name: Build Windows QuarmDockerServer + QuarmDockerInstaller
+
+on:
+  push:
+    tags:
+      - 'v*'   # Runs when you push a tag like v1.0.0
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # Setup MSVC (Visual Studio Build Tools)
+      - name: Setup MSVC
+        uses: microsoft/setup-msbuild@v1
+
+      # Compile C++ file
+      - name: Compile QuarmDockerServer.exe
+        run: |
+          cl /EHsc QuarmDockerServer.cpp /Fe:QuarmDockerServer.exe
+
+      # Install NSIS
+      - name: Install NSIS
+        run: choco install nsis -y
+
+      # Compile Installer
+      - name: Build QuarmDockerInstaller.exe
+        run: |
+          makensis QuarmDockerInstaller.nsi
+
+      # Create zip
+      - name: Create Release Zip
+        run: |
+          powershell Compress-Archive -Path QuarmDockerServer.exe, QuarmDockerInstaller.exe -DestinationPath Release-v0.9.zip
+
+      # Create GitHub Release
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            QuarmDockerServer.exe
+            QuarmDockerInstaller.exe
+            Release-v0.9.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
