@@ -1637,15 +1637,15 @@ static void DoRebuild() {
         L"Rebuild the server image from scratch?\n\n"
         L"Your character data will be PRESERVED.\n"
         L"The server image will be deleted and recompiled.\n"
-        L"This takes 30-45 minutes.\n\n"
+        L"This takes 40-55 minutes.\n\n"
         L"A backup will be taken automatically before the rebuild.\n\nContinue?",
         L"Confirm Rebuild", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
     if (r != IDYES) return;
 
     SetBusy(true);
-    SetStatus(L"Rebuilding... (30-45 minutes)");
+    SetStatus(L"Rebuilding... (40-55 minutes)");
     SetWindowTextW(g_hwndAdvResult,
-        L"Rebuild started. This takes 30-45 minutes.\r\n"
+        L"Rebuild started. This takes 40-55 minutes.\r\n"
         L"Do not close this window.");
 
     std::thread([]{
@@ -1696,10 +1696,10 @@ static void DoStartFresh() {
     if (r != IDYES) return;
 
     SetBusy(true);
-    SetStatus(L"Starting fresh... (30-45 minutes)");
+    SetStatus(L"Starting fresh... (40-55 minutes)");
     SetWindowTextW(g_hwndAdvResult,
         L"Deleting all data and rebuilding...\r\n"
-        L"This takes 30-45 minutes. Do not close this window.");
+        L"This takes 40-55 minutes. Do not close this window.");
 
     std::thread([]{
         RunCommand(L"docker compose down -v", g_installDir);
