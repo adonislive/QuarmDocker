@@ -373,12 +373,10 @@ FunctionEnd
 Function Config_ShowAdapters
     ShowWindow $Ctrl_AdapterLabel ${SW_SHOW}
     ShowWindow $Ctrl_AdapterList  ${SW_SHOW}
-    nsExec::ExecToStack "powershell -NoProfile -Command \
-        \"Get-NetIPAddress -AddressFamily IPv4 | \
-        Where-Object { $$_.IPAddress -ne '127.0.0.1' -and $$_.IPAddress -notlike '169.254.*' -and $$_.InterfaceAlias -notlike 'vEthernet*' -and $$_.InterfaceAlias -notlike '*Bluetooth*' } | \
-        ForEach-Object { \
-            $$_.InterfaceAlias + ' - ' + $$_.IPAddress \
-        } | Out-File -FilePath '$TEMP\qd_adapters.txt' -Encoding UTF8\""
+    FileOpen $0 "$TEMP\qd_enum.ps1" w
+    FileWrite $0 "Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $$_.IPAddress -ne '127.0.0.1' -and $$_.IPAddress -notlike '169.254.*' -and $$_.InterfaceAlias -notlike 'vEthernet*' -and $$_.InterfaceAlias -notlike '*Bluetooth*' } | ForEach-Object { $$_.InterfaceAlias + ' - ' + $$_.IPAddress } | Out-File -FilePath '$TEMP\qd_adapters.txt' -Encoding ASCII"
+    FileClose $0
+    nsExec::ExecToStack 'powershell -NoProfile -ExecutionPolicy Bypass -File "$TEMP\qd_enum.ps1"'
     Pop $0
     Pop $1
     SendMessage $Ctrl_AdapterList ${LB_RESETCONTENT} 0 0
@@ -404,6 +402,7 @@ Function Config_ShowAdapters
     adapter_read_done:
     FileClose $0
     Delete "$TEMP\qd_adapters.txt"
+    Delete "$TEMP\qd_enum.ps1"
 FunctionEnd
 
 Function Config_HideAdapters
