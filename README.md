@@ -1,6 +1,6 @@
 # Quarm Docker Server
 
-Run your own private [Project Quarm](https://www.projectquarm.com/) EverQuest server on Windows — no command line required.
+Run your own private [Project Quarm](https://www.projectquarm.com/) Server on Windows — no command line required.
 
 The installer handles everything: WSL2, Docker Desktop, server setup, firewall rules, and a desktop shortcut to **Quarm Docker Server**, a point-and-click management app for your server.
 
