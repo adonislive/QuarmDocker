@@ -811,11 +811,6 @@ Section "Main" SecMain
     Pop $0
     Pop $1
     FileOpen $InstallLogHandle $InstallLogPath a
-    !insertmacro LogLine "=== Installation complete ==="
-    FileClose $InstallLogHandle
-    CopyFiles /SILENT "$InstallLogPath" "$INSTDIR\install.log"
-
-    DetailPrint "Installation complete."
 
     ; ---- Report install time ----
     System::Call 'kernel32::GetTickCount() i .s'
@@ -824,6 +819,12 @@ Section "Main" SecMain
     IntOp $9 $9 / 1000
     IntOp $R0 $9 / 60
     IntOp $R1 $9 % 60
+    !insertmacro LogLine "Total install time: $R0 minutes $R1 seconds"
+    !insertmacro LogLine "=== Installation complete ==="
+    FileClose $InstallLogHandle
+    CopyFiles /SILENT "$InstallLogPath" "$INSTDIR\install.log"
+
+    DetailPrint "Installation complete."
     DetailPrint "Total install time: $R0 minutes $R1 seconds"
 SectionEnd
 
