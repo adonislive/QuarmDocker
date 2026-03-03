@@ -1,7 +1,7 @@
 ; ============================================================
 ; QuarmDockerInstaller.nsi
 ; QuarmDocker Windows Installer
-; Requires: NSIS 3.x with MUI2 and inetc plugin
+; Requires: NSIS 3.x with inetc plugin
 ;
 ; Build: makensis QuarmDockerInstaller.nsi
 ;   OR right-click the file -> "Compile NSIS Script"
@@ -54,14 +54,11 @@ SetCompressor     /SOLID lzma
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\QuarmDocker"
 !define AUTORUN_KEY   "Software\Microsoft\Windows\CurrentVersion\Run"
 !define APP_KEY       "Software\QuarmDocker"
-!define IMAGE_PRIMARY  "adonislive/quarm:latest"
-!define IMAGE_FALLBACK "adonislive/quarm:latest"
 
 ; ============================================================
 ; VARIABLES
 ; ============================================================
 Var Dialog
-Var InstallMode         ; 0=prebuilt  1=build from source
 Var NetworkMode         ; 0=local     1=LAN
 Var SelectedIP
 Var SystemRAM_MB
@@ -73,8 +70,6 @@ Var InstallLogHandle
 Var WaitCounter
 
 ; Dialog control handles
-Var Ctrl_RadioPrebuilt
-Var Ctrl_RadioSource
 Var Ctrl_RadioLocal
 Var Ctrl_RadioLAN
 Var Ctrl_AdapterList
@@ -90,7 +85,6 @@ Var Ctrl_DetailText
 Page custom PageWelcome_Show
 Page custom PagePrereq_Show  PagePrereq_Leave
 Page custom PageConfig_Show  PageConfig_Leave
-Page custom PageInstPath_Show PageInstPath_Leave
 Page custom PageDownload_Show PageDownload_Leave
 Page instfiles
 Page custom PageComplete_Show PageComplete_Leave
@@ -120,9 +114,9 @@ Function PageWelcome_Show
 This installer will:$\r$\n\
   - Check your computer meets the requirements$\r$\n\
   - Install WSL2 and Docker Desktop if needed$\r$\n\
-  - Download or build the Quarm server image$\r$\n\
+  - Build the Quarm server (30-45 minutes)$\r$\n\
   - Configure Windows Firewall and Defender$\r$\n\
-  - Create a desktop shortcut to Quarm Server Manager$\r$\n$\r$\n\
+  - Create a desktop shortcut to Quarm Docker Server$\r$\n$\r$\n\
 Your computer will be ready to run a private Quarm server.$\r$\n$\r$\n\
 Click Next to begin."
     Pop $0
@@ -146,10 +140,11 @@ Function PagePrereq_Show
         "The following will be verified:$\r$\n\
   - Windows 10 version 2004 or later$\r$\n\
   - 64-bit (x64) Windows$\r$\n\
-  - WSL2 (will be installed automatically if missing)$\r$\n\
+  - Minimum 12 GB RAM recommended (8 GB minimum)$\r$\n\
+  - WSL2 with Ubuntu (will be installed if missing)$\r$\n\
   - Docker Desktop (will be downloaded if missing)$\r$\n\
   - Docker engine is running$\r$\n$\r$\n\
-If WSL2 needs to be installed, a reboot will be required.$\r$\n\
+If WSL2 needs to be installed, one reboot will be required.$\r$\n\
 Just run this installer again after rebooting."
     Pop $0
 
@@ -162,6 +157,25 @@ Function PagePrereq_Leave
     FileOpen $InstallLogHandle $InstallLogPath w
     !insertmacro LogLine "QuarmDocker Installer Log"
     !insertmacro LogLine "========================="
+
+    ; --- Check 0: Verify we have admin privileges ---
+    nsExec::ExecToStack 'net session'
+    Pop $0
+    Pop $1
+    ${If} $0 != 0
+        !insertmacro LogLine "WARNING: Not running as administrator"
+        MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION \
+            "This installer is not running with administrator privileges.$\n$\n\
+Some features (firewall rules, Defender exclusions) will not work.$\n\
+For best results, close this installer, right-click it, and$\n\
+select 'Run as administrator'.$\n$\n\
+Click OK to continue anyway, or Cancel to exit." IDOK prereq_admin_continue
+        FileClose $InstallLogHandle
+        Abort
+        prereq_admin_continue:
+    ${Else}
+        !insertmacro LogLine "PASS: Running as administrator"
+    ${EndIf}
 
     ; --- Check 1: Windows version ---
     ${If} ${AtLeastWin10}
@@ -212,26 +226,79 @@ Function PagePrereq_Leave
     ${EndIf}
     !insertmacro LogLine "RAM: $SystemRAM_MB MB  WSL2 cap: $WSL2_Memory_MB MB  procs: $WSL2_Processors"
 
-    ; --- Check 4: WSL2 ---
-    ; wsl --list returns 0 if WSL feature is enabled (even with no distros)
-    ; wsl --status is unreliable - returns non-zero on many systems even when WSL is present
-    nsExec::ExecToStack 'wsl --list'
+    ; --- Check 3b: Low RAM warning ---
+    ${If} $SystemRAM_MB < 12000
+        !insertmacro LogLine "WARNING: Low RAM ($SystemRAM_MB MB) - build may fail"
+        MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION \
+            "Your system has $SystemRAM_MB MB of RAM.$\n$\n\
+Building the server requires significant memory.$\n\
+Systems with less than 12 GB may experience build failures.$\n$\n\
+You can continue, but if the build fails, try closing$\n\
+other applications and retrying, or use a machine$\n\
+with more RAM.$\n$\n\
+Continue anyway?" IDOK prereq_ram_ok
+        FileClose $InstallLogHandle
+        Abort
+        prereq_ram_ok:
+    ${EndIf}
+
+    ; --- Check 4: WSL2 + Ubuntu distro ---
+    ; Step A: Check if WSL feature is enabled at all
+    ; wsl --list --quiet returns 0 if WSL is enabled, lists distro names
+    nsExec::ExecToStack 'wsl --list --quiet'
     Pop $0
     Pop $1
     ${If} $0 != 0
-        nsExec::ExecToStack 'wsl --install --no-distribution'
-        Pop $0
-        Pop $1
-        !insertmacro LogLine "WSL2 install exit: $0"
+        ; WSL feature not installed — use ExecWait for real console context
+        ; CRITICAL: nsExec silently fails for wsl --install (confirmed by Azure testing)
+        !insertmacro LogLine "WSL2 not present - installing WSL2 + Ubuntu..."
+        ExecWait 'wsl --install --distribution Ubuntu-24.04' $0
+        !insertmacro LogLine "WSL2 + Ubuntu install exit: $0"
         FileClose $InstallLogHandle
         MessageBox MB_OK|MB_ICONINFORMATION \
-            "WSL2 has been installed.$\n$\n\
-Please restart your computer and run this installer again.$\n\
-Your selections do not need to be re-entered."
+            "WSL2 and Ubuntu are being installed.$\n$\n\
+After the setup completes, please restart your computer$\n\
+and run this installer again.$\n$\n\
+(This is the only reboot required.)"
         Quit
-    ${Else}
-        !insertmacro LogLine "PASS: WSL2 present"
     ${EndIf}
+
+    ; Step B: WSL feature is enabled — check if a distro exists
+    ; $1 has the output from wsl --list --quiet (distro names)
+    StrCpy $1 $1 -2   ; trim trailing CR LF
+    StrLen $2 $1
+    ${If} $2 < 2
+        ; WSL enabled but no distro — install Ubuntu
+        !insertmacro LogLine "WSL2 present but no distro - installing Ubuntu..."
+        ExecWait 'wsl --install --distribution Ubuntu-24.04' $0
+        !insertmacro LogLine "Ubuntu install exit: $0"
+        ; Re-check if distro is now available
+        nsExec::ExecToStack 'wsl --list --quiet'
+        Pop $0
+        Pop $1
+        StrCpy $1 $1 -2
+        StrLen $2 $1
+        ${If} $2 < 2
+            ; Still no distro — needs reboot
+            FileClose $InstallLogHandle
+            MessageBox MB_OK|MB_ICONINFORMATION \
+                "Ubuntu has been installed but a restart is required.$\n$\n\
+Please restart your computer and run this installer again."
+            Quit
+        ${EndIf}
+    ${EndIf}
+    !insertmacro LogLine "PASS: WSL2 + distro present"
+
+    ; --- Check 4b: Write .wslconfig BEFORE Docker starts ---
+    ; Writing it here avoids the wsl --shutdown crash during install phase
+    StrCpy $1 "$WSL2_Memory_MB"
+    StrCpy $1 "$1MB"
+    FileOpen $0 "$PROFILE\.wslconfig" w
+    FileWrite $0 "[wsl2]$\r$\n"
+    FileWrite $0 "memory=$1$\r$\n"
+    FileWrite $0 "processors=$WSL2_Processors$\r$\n"
+    FileClose $0
+    !insertmacro LogLine "wslconfig written: memory=$1  processors=$WSL2_Processors"
 
     ; --- Check 5: Docker Desktop ---
     IfFileExists "$PROGRAMFILES64\Docker\Docker\Docker Desktop.exe" prereq_docker_found
@@ -284,11 +351,76 @@ Your selections do not need to be re-entered."
     Pop $0
     Pop $1
     IntCmp $0 0 prereq_docker_ok
-    MessageBox MB_OK|MB_ICONEXCLAMATION "Docker Desktop is not running.$\n$\nPlease open Docker Desktop, wait for it to start, then click Next again."
+    MessageBox MB_OK|MB_ICONEXCLAMATION \
+        "Docker Desktop is not running.$\n$\n\
+Please open Docker Desktop and wait for it to start,$\n\
+then click Next again."
     FileClose $InstallLogHandle
     Abort
     prereq_docker_ok:
     !insertmacro LogLine "PASS: Docker engine running"
+
+    ; --- Check 6b: Enable Docker WSL integration for Ubuntu ---
+    ; Docker Desktop must have WSL integration enabled for the Ubuntu distro
+    !insertmacro LogLine "Configuring Docker WSL integration..."
+    nsExec::ExecToStack 'powershell -NoProfile -Command \
+        "$$settingsPath = [System.IO.Path]::Combine($$env:APPDATA, ''Docker'', ''settings-store.json''); \
+        if (Test-Path $$settingsPath) { \
+            $$j = Get-Content $$settingsPath -Raw | ConvertFrom-Json; \
+            if (-not $$j.PSObject.Properties[''integratedWslDistros'']) { \
+                $$j | Add-Member -NotePropertyName ''integratedWslDistros'' -NotePropertyValue (New-Object PSObject) -Force \
+            }; \
+            $$j.integratedWslDistros | Add-Member -NotePropertyName ''Ubuntu-24.04'' -NotePropertyValue $$true -Force; \
+            $$j | ConvertTo-Json -Depth 10 | Set-Content $$settingsPath -Encoding UTF8; \
+            Write-Output ''OK'' \
+        } else { Write-Output ''NOFILE'' }"'
+    Pop $0
+    Pop $1
+    StrCpy $1 $1 -2
+    !insertmacro LogLine "Docker WSL integration config: $1 (exit: $0)"
+    ${If} $1 == "OK"
+        ; Restart Docker Desktop to pick up the new setting
+        !insertmacro LogLine "Restarting Docker to apply WSL integration..."
+        nsExec::ExecToStack 'powershell -NoProfile -Command \
+            "Stop-Process -Name ''Docker Desktop'' -Force -ErrorAction SilentlyContinue; \
+            Start-Sleep -Seconds 3; \
+            Start-Process ''$PROGRAMFILES64\Docker\Docker\Docker Desktop.exe''"'
+        Pop $0
+        Pop $1
+        ; Wait for Docker to come back up
+        Sleep 5000
+        StrCpy $WaitCounter 0
+        prereq_wsl_docker_wait:
+            nsExec::ExecToStack 'docker info'
+            Pop $0
+            Pop $1
+            IntCmp $0 0 prereq_wsl_docker_ready
+            IntOp $WaitCounter $WaitCounter + 1
+            IntCmp $WaitCounter 40 prereq_wsl_docker_timeout prereq_wsl_docker_keepwait prereq_wsl_docker_timeout
+            prereq_wsl_docker_timeout:
+            MessageBox MB_OK|MB_ICONEXCLAMATION \
+                "Docker is taking a long time to restart after WSL configuration.$\n$\n\
+Please wait for Docker Desktop to fully start, then click Next again."
+            FileClose $InstallLogHandle
+            Abort
+            prereq_wsl_docker_keepwait:
+            Sleep 3000
+            Goto prereq_wsl_docker_wait
+        prereq_wsl_docker_ready:
+        !insertmacro LogLine "Docker restarted with WSL integration"
+    ${Else}
+        ; Could not find or edit settings file — warn user with manual steps
+        !insertmacro LogLine "WARNING: Could not auto-configure Docker WSL integration"
+        MessageBox MB_OK|MB_ICONEXCLAMATION \
+            "Could not automatically enable Docker WSL integration.$\n$\n\
+Please do this manually:$\n\
+1. Open Docker Desktop$\n\
+2. Click the gear icon (Settings)$\n\
+3. Go to Resources > WSL integration$\n\
+4. Enable the toggle for Ubuntu-24.04$\n\
+5. Click Apply & restart$\n$\n\
+Then click Next to continue."
+    ${EndIf}
 
     ; --- Check 7: Set Docker context ---
     nsExec::ExecToStack 'docker context use desktop-linux'
@@ -393,7 +525,7 @@ Function PageConfig_Show
     ShowWindow $Ctrl_AdapterList ${SW_HIDE}
 
     ${NSD_CreateCheckbox} 0 160u 100% 14u \
-        "Start Quarm Server Manager automatically with Windows"
+        "Start Quarm Docker Server automatically with Windows"
     Pop $Ctrl_ChkAutoStart
 
     ${NSD_OnClick} $Ctrl_RadioLAN  Config_ShowAdapters
@@ -467,56 +599,7 @@ At least 10 GB is required.$\nCurrently available: $1 MB"
 FunctionEnd
 
 ; ============================================================
-; PAGE: INSTALLATION PATH CHOICE
-; ============================================================
-Function PageInstPath_Show
-    nsDialogs::Create 1018
-    Pop $Dialog
-    ${If} $Dialog == error
-        Abort
-    ${EndIf}
-
-    ${NSD_CreateLabel} 0 0 100% 14u "How would you like to get the Quarm server?"
-    Pop $0
-
-    ${NSD_CreateRadioButton} 8u 18u 100% 14u \
-        "Download pre-built server (recommended) - about 5 minutes"
-    Pop $Ctrl_RadioPrebuilt
-    ${NSD_SetState} $Ctrl_RadioPrebuilt ${BST_CHECKED}
-    ${NSD_CreateLabel} 20u 34u 85% 12u \
-        "Downloads a ready-to-run image. Stable, tested, no compilation needed."
-    Pop $0
-
-    ${NSD_CreateRadioButton} 8u 52u 100% 14u \
-        "Build from source - 30 to 45 minutes (advanced users)"
-    Pop $Ctrl_RadioSource
-    ${NSD_CreateLabel} 20u 68u 85% 24u \
-        "Compiles the latest Quarm server code from SecretsOTheP/EQMacEmu.$\r$\n\
-For users who want the most current version."
-    Pop $0
-
-    ${NSD_CreateLabel} 0 106u 100% 36u \
-        "Note: A pre-built image is a completely valid choice.$\r$\n\
-Many users run a stable known-good image indefinitely.$\r$\n\
-Build-from-source is available for those who want the absolute latest code."
-    Pop $0
-
-    nsDialogs::Show
-FunctionEnd
-
-Function PageInstPath_Leave
-    ${NSD_GetState} $Ctrl_RadioSource $0
-    ${If} $0 = ${BST_CHECKED}
-        StrCpy $InstallMode 1
-        !insertmacro LogLine "Mode: build from source"
-    ${Else}
-        StrCpy $InstallMode 0
-        !insertmacro LogLine "Mode: pre-built image"
-    ${EndIf}
-FunctionEnd
-
-; ============================================================
-; PAGE: DOWNLOAD / BUILD (Show - informational only)
+; PAGE: BUILD / INSTALL (Show - informational only)
 ; ============================================================
 Function PageDownload_Show
     nsDialogs::Create 1018
@@ -525,67 +608,30 @@ Function PageDownload_Show
         Abort
     ${EndIf}
 
-    ${NSD_CreateLabel} 0 0 100% 14u "Installing..."
+    ${NSD_CreateLabel} 0 0 100% 14u "Starting the server..."
     Pop $Ctrl_ProgressText
 
     ${NSD_CreateLabel} 0 18u 100% 160u \
         "Click Next to begin the installation.$\r$\n$\r$\n\
 The installer will:$\r$\n\
-  - Configure WSL2 memory settings$\r$\n\
   - Add Windows Firewall rules$\r$\n\
   - Add Windows Defender exclusions$\r$\n\
   - Copy project files$\r$\n\
-  - Download or build the server image$\r$\n\
+  - Build the server from source (30-45 minutes)$\r$\n\
   - Start the server$\r$\n$\r$\n\
-If building from source this will take 30-45 minutes.$\r$\nDo not close this window."
+The build takes 30-45 minutes. Do not close this window.$\r$\n\
+The window may appear frozen during compilation - this is normal."
     Pop $Ctrl_DetailText
 
     nsDialogs::Show
 FunctionEnd
 
 ; ============================================================
-; PAGE: DOWNLOAD / BUILD (Leave - all install work happens here)
+; PAGE: BUILD / INSTALL (Leave - all install work happens here)
 ; ============================================================
 Function PageDownload_Leave
 
-    ; ---- WSL2 memory configuration ----
-    ; Write .wslconfig directly - simpler and more reliable than PowerShell regex merge
-    ${NSD_SetText} $Ctrl_ProgressText "Configuring WSL2 memory settings..."
-    StrCpy $1 "$WSL2_Memory_MB"
-    StrCpy $1 "$1MB"
-    FileOpen $0 "$PROFILE\.wslconfig" w
-    FileWrite $0 "[wsl2]$\r$\n"
-    FileWrite $0 "memory=$1$\r$\n"
-    FileWrite $0 "processors=$WSL2_Processors$\r$\n"
-    FileClose $0
-    !insertmacro LogLine "wslconfig written: memory=$1  processors=$WSL2_Processors"
-
-    nsExec::ExecToStack 'wsl --shutdown'
-    Pop $0
-    !insertmacro LogLine "wsl --shutdown exit: $0"
-    Sleep 3000
-
-    nsExec::ExecToStack 'docker context use desktop-linux'
-    Pop $0
-
-    ; Wait for Docker to come back up
-    ${NSD_SetText} $Ctrl_ProgressText "Waiting for Docker to restart..."
-    StrCpy $WaitCounter 0
-    dl_wait_docker:
-        nsExec::ExecToStack 'docker info'
-        Pop $0
-        Pop $1
-        IntCmp $0 0 dl_docker_ready
-        IntOp $WaitCounter $WaitCounter + 1
-        IntCmp $WaitCounter 20 dl_show_retry dl_keep_waiting dl_show_retry
-        dl_show_retry:
-        MessageBox MB_OK|MB_ICONEXCLAMATION "Docker is taking a long time to restart.$\nPlease wait for Docker to start, then click Next again."
-        Abort
-        dl_keep_waiting:
-        Sleep 3000
-        Goto dl_wait_docker
-    dl_docker_ready:
-    !insertmacro LogLine "Docker ready"
+    !insertmacro LogLine "Mode: build from source"
 
     ; ---- Firewall rules ----
     ${NSD_SetText} $Ctrl_ProgressText "Writing Windows Firewall rules..."
@@ -647,38 +693,36 @@ Function PageDownload_Leave
     FileClose $0
     !insertmacro LogLine ".env written: SERVER_ADDRESS=$SelectedIP"
 
-    ; ---- Download or Build ----
-    ; Use IntCmp instead of ${If}/${Else} so MessageBox jumps work correctly
-    IntCmp $InstallMode 0 dl_prebuilt dl_prebuilt dl_buildsource
-
-    dl_prebuilt:
-    ${NSD_SetText} $Ctrl_ProgressText "Downloading server image (about 5 minutes)..."
-    !insertmacro LogLine "Pulling: ${IMAGE_PRIMARY}"
-    nsExec::ExecToStack 'docker pull ${IMAGE_PRIMARY}'
+    ; ---- Verify Docker is still running before build ----
+    ${NSD_SetText} $Ctrl_ProgressText "Verifying Docker is ready..."
+    nsExec::ExecToStack 'docker info'
     Pop $0
     Pop $1
-    !insertmacro LogLine "docker pull primary exit: $0"
-    IntCmp $0 0 dl_tag_primary
-    ${NSD_SetText} $Ctrl_ProgressText "Primary source failed. Trying alternate..."
-    !insertmacro LogLine "Trying fallback: ${IMAGE_FALLBACK}"
-    nsExec::ExecToStack 'docker pull ${IMAGE_FALLBACK}'
+    ${If} $0 != 0
+        !insertmacro LogLine "Docker not ready before build - waiting..."
+        StrCpy $WaitCounter 0
+        dl_prebuild_wait:
+            Sleep 3000
+            nsExec::ExecToStack 'docker info'
+            Pop $0
+            Pop $1
+            IntCmp $0 0 dl_prebuild_ready
+            IntOp $WaitCounter $WaitCounter + 1
+            IntCmp $WaitCounter 20 dl_prebuild_timeout dl_prebuild_keepwait dl_prebuild_timeout
+            dl_prebuild_timeout:
+            MessageBox MB_OK|MB_ICONEXCLAMATION \
+                "Docker Desktop is not responding.$\n$\n\
+Please make sure Docker Desktop is running, then click Next again."
+            Abort
+            dl_prebuild_keepwait:
+            Goto dl_prebuild_wait
+        dl_prebuild_ready:
+        !insertmacro LogLine "Docker ready (after wait)"
+    ${EndIf}
+    nsExec::ExecToStack 'docker context use desktop-linux'
     Pop $0
-    Pop $1
-    !insertmacro LogLine "docker pull fallback exit: $0"
-    IntCmp $0 0 dl_tag_fallback
-    MessageBox MB_OK|MB_ICONSTOP "Failed to download the server image.$\n$\nCheck your internet connection.$\nLog: $InstallLogPath"
-    Abort
-    dl_tag_fallback:
-    nsExec::ExecToStack 'docker tag ${IMAGE_FALLBACK} quarm-server'
-    Pop $0
-    Goto dl_image_done
-    dl_tag_primary:
-    nsExec::ExecToStack 'docker tag ${IMAGE_PRIMARY} quarm-server'
-    Pop $0
-    Goto dl_image_done
 
-    dl_buildsource:
-    ; Check port 3306 conflict
+    ; ---- Check port 3306 conflict ----
     ${NSD_SetText} $Ctrl_ProgressText "Checking for port 3306 conflict..."
     nsExec::ExecToStack 'powershell -NoProfile -Command \
         "(Test-NetConnection -ComputerName 127.0.0.1 -Port 3306 \
@@ -694,7 +738,10 @@ Function PageDownload_Leave
     Pop $0
     Pop $2
     StrCpy $2 $2 -2
-    MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "Port 3306 is in use (process: $2).$\n$\nThis port is needed by the Quarm server database.$\nClick OK to stop and disable the conflicting service automatically." IDOK dl_stop_mysql
+    MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION \
+        "Port 3306 is in use (process: $2).$\n$\n\
+This port is needed by the Quarm server database.$\n\
+Click OK to stop and disable the conflicting service automatically." IDOK dl_stop_mysql
     MessageBox MB_OK|MB_ICONSTOP "Port 3306 is in use. Free this port and run the installer again."
     Abort
     dl_stop_mysql:
@@ -707,8 +754,13 @@ Function PageDownload_Leave
     Pop $1
     Sleep 2000
     dl_port_ok:
+
+    ; ---- Build attempt 1 ----
     ${NSD_SetText} $Ctrl_ProgressText "Building from source (30-45 minutes)..."
-    ${NSD_SetText} $Ctrl_DetailText "Compiling the Quarm server. This takes 30-45 minutes.$\r$\nDO NOT CLOSE THIS WINDOW.$\r$\nThe window will appear frozen - this is normal."
+    ${NSD_SetText} $Ctrl_DetailText \
+        "Compiling the Quarm server. This takes 30-45 minutes.$\r$\n\
+DO NOT CLOSE THIS WINDOW.$\r$\n\
+The window will appear frozen - this is normal."
     !insertmacro LogLine "Starting docker compose build..."
     SetOutPath "$INSTDIR"
     nsExec::ExecToStack 'docker compose build'
@@ -717,20 +769,51 @@ Function PageDownload_Leave
     FileWrite $InstallLogHandle "$1"
     !insertmacro LogLine "docker compose build exit: $0"
     IntCmp $0 0 dl_build_ok
-    MessageBox MB_OKCANCEL|MB_ICONSTOP "Build failed.$\n$\nClick OK to retry - Docker resumes from where it stopped.$\n(The build cache preserves completed steps.)$\nLog: $InstallLogPath" IDOK dl_retry_build
+
+    ; ---- Build attempt 2 ----
+    MessageBox MB_OKCANCEL|MB_ICONSTOP \
+        "Build failed (attempt 1 of 3).$\n$\n\
+This can happen if Docker was recently installed or restarted.$\n\
+Click OK to retry - Docker resumes from where it stopped.$\n\
+(The build cache preserves completed steps.)$\n$\n\
+Log: $InstallLogPath" IDOK dl_retry_build_2
     Abort
-    dl_retry_build:
+    dl_retry_build_2:
+    !insertmacro LogLine "Retry build attempt 2..."
     nsExec::ExecToStack 'docker compose build'
     Pop $0
     Pop $1
     FileWrite $InstallLogHandle "$1"
-    !insertmacro LogLine "Retry build exit: $0"
+    !insertmacro LogLine "Retry build 2 exit: $0"
     IntCmp $0 0 dl_build_ok
-    MessageBox MB_OK|MB_ICONSTOP "Build failed again.$\nLog: $InstallLogPath"
+
+    ; ---- Build attempt 3 ----
+    MessageBox MB_OKCANCEL|MB_ICONSTOP \
+        "Build failed (attempt 2 of 3).$\n$\n\
+Click OK for one more attempt.$\n\
+If this fails, try restarting your computer and$\n\
+running this installer again.$\n$\n\
+Log: $InstallLogPath" IDOK dl_retry_build_3
+    Abort
+    dl_retry_build_3:
+    !insertmacro LogLine "Retry build attempt 3..."
+    nsExec::ExecToStack 'docker compose build'
+    Pop $0
+    Pop $1
+    FileWrite $InstallLogHandle "$1"
+    !insertmacro LogLine "Retry build 3 exit: $0"
+    IntCmp $0 0 dl_build_ok
+
+    ; All 3 attempts failed
+    MessageBox MB_OK|MB_ICONSTOP \
+        "Build failed after 3 attempts.$\n$\n\
+Suggestions:$\n\
+- Restart your computer and run this installer again$\n\
+- Close other applications to free memory$\n\
+- Check the log: $InstallLogPath$\n$\n\
+For help: https://github.com/adonislive/QuarmDocker/issues"
     Abort
     dl_build_ok:
-
-    dl_image_done:
 
     ; ---- First Start ----
     ${NSD_SetText} $Ctrl_ProgressText "Starting the server..."
@@ -759,9 +842,9 @@ Function PageDownload_Leave
     ${EndIf}
 
     ; Shortcuts
-    CreateShortcut "$DESKTOP\Quarm Server Manager.lnk" "$INSTDIR\QuarmDockerServer.exe"
+    CreateShortcut "$DESKTOP\Quarm Docker Server.lnk" "$INSTDIR\QuarmDockerServer.exe"
     CreateDirectory "$SMPROGRAMS\Quarm Docker Server"
-    CreateShortcut "$SMPROGRAMS\Quarm Docker Server\Quarm Server Manager.lnk" \
+    CreateShortcut "$SMPROGRAMS\Quarm Docker Server\Quarm Docker Server.lnk" \
         "$INSTDIR\QuarmDockerServer.exe"
     CreateShortcut "$SMPROGRAMS\Quarm Docker Server\Uninstall.lnk" \
         "$INSTDIR\Uninstall.exe"
@@ -829,10 +912,10 @@ Function PageComplete_Show
     ${NSD_CreateLabel} 0 142u 100% 10u "Step 2 - Make yourself a GM:"
     Pop $0
     ${NSD_CreateLabel} 8u 154u 90% 12u \
-        "Open Quarm Server Manager, go to the Advanced tab, use Make GM."
+        "Open Quarm Docker Server, go to the Admin Tools tab, use Make GM."
     Pop $0
     ${NSD_CreateLabel} 0 172u 100% 12u \
-        "A desktop shortcut to Quarm Server Manager has been created."
+        "A desktop shortcut to Quarm Docker Server has been created."
     Pop $0
     ${NSD_CreateLabel} 0 188u 100% 14u \
         "Setup log: $INSTDIR\install.log (include this if you need support)"
@@ -962,7 +1045,7 @@ Section "Uninstall"
     DeleteRegKey HKLM ${APP_KEY}
     DeleteRegKey HKCU ${APP_KEY}
 
-    Delete "$DESKTOP\Quarm Server Manager.lnk"
+    Delete "$DESKTOP\Quarm Docker Server.lnk"
     RMDir /r "$SMPROGRAMS\Quarm Docker Server"
     SetOutPath "$TEMP"
     RMDir /r "$INSTDIR"
