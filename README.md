@@ -37,7 +37,7 @@ The installer handles everything: WSL2, Docker Desktop, server setup, firewall r
 
 ### Step 1 — Configure your EQ client
 
-After installation, the installer will offer to write your `eqhost.txt` automatically. If you skipped that step, open **Quarm Docker Server**, go to the **Network** tab, and click **Write eqhost.txt**.
+After installation, the completion screen shows your `eqhost.txt` content — copy it and paste it into the `eqhost.txt` file in your TAKP client folder. You can also find it later in **Quarm Docker Server** on the **Network** tab.
 
 Your `eqhost.txt` should look like this (for local play):
 ```
@@ -128,7 +128,7 @@ To update to the latest Quarm server code:
 2. Click **Rebuild Server**
 3. The app will take a backup, rebuild the image from the latest source, and restart
 
-This takes 30–45 minutes. Your character data is always preserved.
+This takes 40–55 minutes. Your character data is always preserved.
 
 ---
 
