@@ -375,10 +375,9 @@ Function Config_ShowAdapters
     ShowWindow $Ctrl_AdapterList  ${SW_SHOW}
     nsExec::ExecToStack "powershell -NoProfile -Command \
         \"Get-NetIPAddress -AddressFamily IPv4 | \
-        Where-Object { $$_.IPAddress -ne '127.0.0.1' } | \
+        Where-Object { $$_.IPAddress -ne '127.0.0.1' -and $$_.IPAddress -notlike '169.254.*' -and $$_.InterfaceAlias -notlike 'vEthernet*' -and $$_.InterfaceAlias -notlike '*Bluetooth*' } | \
         ForEach-Object { \
-            $$a = (Get-NetAdapter -InterfaceIndex $$_.InterfaceIndex -EA SilentlyContinue).Name; \
-            if($$a) { $$a + ' - ' + $$_.IPAddress } \
+            $$_.InterfaceAlias + ' - ' + $$_.IPAddress \
         } | Out-File -FilePath '$TEMP\qd_adapters.txt' -Encoding UTF8\""
     Pop $0
     Pop $1

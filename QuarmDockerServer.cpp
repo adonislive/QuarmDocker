@@ -1350,9 +1350,8 @@ static std::vector<AdapterInfo> EnumAdapters() {
     std::string out = RunCommand(
         L"powershell -NoProfile -Command \""
         L"Get-NetIPAddress -AddressFamily IPv4 | "
-        L"Where-Object { $_.IPAddress -ne '127.0.0.1' } | "
-        L"ForEach-Object { $a=Get-NetAdapter -InterfaceIndex $_.InterfaceIndex -EA SilentlyContinue; "
-        L"if($a){ $a.Name + '|' + $_.IPAddress } }\"");
+        L"Where-Object { $_.IPAddress -ne '127.0.0.1' -and $_.IPAddress -notlike '169.254.*' -and $_.InterfaceAlias -notlike 'vEthernet*' -and $_.InterfaceAlias -notlike '*Bluetooth*' } | "
+        L"ForEach-Object { $_.InterfaceAlias + '|' + $_.IPAddress }\"");
     std::istringstream ss(out);
     std::string line;
     while (std::getline(ss, line)) {
