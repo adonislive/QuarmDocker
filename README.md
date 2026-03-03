@@ -57,7 +57,7 @@ Launch your TAKP client. At the login screen, enter any username and password yo
 
 ### Step 3 — Make yourself a GM
 
-Open **Quarm Docker Server** and go to the **Admin Tools** tab. Type your account name in the Account field and click **Make GM**. Log out and back in for the change to take effect.
+Open **Quarm Docker Server** shortcut on desktop and go to the **Admin Tools** tab. Type your account name in the Account field and click **Make GM**. Log out and back in for the change to take effect.
 
 ---
 
@@ -81,7 +81,7 @@ Open the **Quarm Docker Server** app from your desktop shortcut. All server mana
 
 To let other computers on your home network connect to your server:
 
-1. Open **Quarm Docker Server** and go to the **Network** tab
+1. Open **Quarm Docker Server** shortcut on desktop and go to the **Network** tab
 2. Click **Change Network Setting**
 3. Select your network adapter from the list (it will show your LAN IP address)
 4. Click **Confirm Selection**
