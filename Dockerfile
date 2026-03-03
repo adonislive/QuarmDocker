@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Each dependency, source clone, and build step is intentionally kept as a separate RUN instruction.
 # This preserves Docker's layer cache granularity — if a build fails partway through, Docker can
 # resume from the failed step rather than restarting the entire build. This is especially important
-# for low-end machines where the 30-45 minute compile could fail due to memory pressure.
+# for low-end machines where the 40-55 minute compile could fail due to memory pressure.
 # Do not consolidate these RUN blocks. This is designed to compile on a potato.
 RUN apt update && apt install -y --no-install-recommends build-essential libtool cmake curl debconf-utils git libluabind-dev libsodium-dev liblua5.2-0 liblua5.2-dev libmariadb-dev libssl-dev minizip make mariadb-client locales nano unzip uuid-dev iputils-ping wget libcurl4-openssl-dev gdb libyaml-cpp-dev ccache ninja-build pv mariadb-server libperl-dev libjson-perl libio-stringy-perl liblua5.1-dev libluabind-dev libboost-dev mariadb-server valgrind telnet ca-certificates
 
@@ -40,8 +40,8 @@ RUN mkdir data && \
     mv /src/utils/sql/database_full/*.tar.gz .
 
 COPY init.sh .
-RUN chmod +x init.sh && ./init.sh
+RUN sed -i 's/\r$//' init.sh && chmod +x init.sh && ./init.sh
 
 COPY entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && chmod +x /usr/local/bin/entrypoint.sh
 ENTRYPOINT [ "entrypoint.sh" ]
