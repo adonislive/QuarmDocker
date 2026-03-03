@@ -54,6 +54,7 @@ SetCompressor     /SOLID lzma
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\QuarmDocker"
 !define AUTORUN_KEY   "Software\Microsoft\Windows\CurrentVersion\Run"
 !define APP_KEY       "Software\QuarmDocker"
+!define DOCKER_URL    "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe"
 
 ; ============================================================
 ; VARIABLES
@@ -291,7 +292,7 @@ Function PagePrereq_Leave
     prereq_docker_download:
     !insertmacro LogLine "User approved Docker download, starting..."
     MessageBox MB_OK|MB_ICONINFORMATION "Docker Desktop will now be downloaded and installed.$\n$\nThis may take several minutes. A progress window will appear.$\nPlease wait for it to complete."
-    inetc::get "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe" "$TEMP\DockerDesktopInstaller.exe" /END
+    inetc::get "${DOCKER_URL}" "$TEMP\DockerDesktopInstaller.exe" /END
     Pop $0
     StrCmp $0 "OK" 0 prereq_docker_dl_fail
     !insertmacro LogLine "Docker Desktop downloaded, launching installer..."
