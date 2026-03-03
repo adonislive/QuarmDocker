@@ -148,6 +148,6 @@ This removes the app, firewall rules, shortcuts, and install folder. Your Docker
 
 ## Credits
 
-Thanks to surron, darius, kicnlag, solar, and secrets for framework, ingenuity, grounding, advice, and space to code.
+Thanks to surron, darius, kicnlag, solar, and secrets for framework, ingenuity, grounding, advice, and space to code.  Thanks to Starrlord for Quality Assurance testing.
 
 Based on code frame from [EQMacEmuDockerHub](https://github.com/jcon321/EQMacEmuDockerHub).
