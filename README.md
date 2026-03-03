@@ -12,7 +12,7 @@ The installer handles everything: WSL2, Docker Desktop, server setup, firewall r
 
 - Windows 10 / 11, 64-bit
 - 8 GB RAM minimum (16 GB recommended)
-- 10 GB free disk space
+- 15 GB free disk space
 - TAKP client + [Quarm Patcher](https://github.com/SecretsOTheP/eqemupatcher/releases/) + (optional) [Zeal](https://github.com/CoastalRedwood/Zeal/releases/)
 - [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/) (Windows/Mac) or Docker Engine (Linux)
 
