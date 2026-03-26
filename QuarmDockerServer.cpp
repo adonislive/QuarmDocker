@@ -217,6 +217,9 @@ static const wchar_t* TAB_LABELS[NUM_TABS] = {
 #define IDC_BTN_PRO_SET_TITLE    5707
 #define IDC_PRO_GENDER_COMBO     5708
 #define IDC_BTN_PRO_SET_GENDER   5709
+// --- Pro Tools: Currency + Inventory (own IDs, separate from Player Tools) ---
+#define IDC_BTN_PRO_CURRENCY     5710
+#define IDC_BTN_PRO_INVENTORY    5711
 
 // --- Log viewer: new controls ---
 #define IDC_LOG_FILE_COMBO       5900
@@ -4669,8 +4672,8 @@ static void CreateGameToolsPanel(HWND parent) {
     MakeLabel(parent, L"Platinum:", 20, y+4, 58, 20);
     g_hwndProPlatAmount = MakeEdit(parent, IDC_PRO_PLAT_AMOUNT, 82, y, 80, 24);
     MakeButton(parent, L"Give Platinum", IDC_BTN_PRO_GIVE_PLAT, 170, y, 110, 26);
-    MakeButton(parent, L"Currency",      IDC_BTN_SHOW_CURRENCY,  290, y, 80,  26);
-    MakeButton(parent, L"Inventory",     IDC_BTN_SHOW_INVENTORY, 378, y, 80,  26);
+    MakeButton(parent, L"Currency",      IDC_BTN_PRO_CURRENCY,   290, y, 80,  26);
+    MakeButton(parent, L"Inventory",     IDC_BTN_PRO_INVENTORY,  378, y, 80,  26);
     y += 30;
 
     // --- Loot Table Viewer ---
@@ -5197,6 +5200,54 @@ static void DoSetAATitle() {
     RunQuery(L"UPDATE character_data SET title=" + std::to_wstring(sel) +
              L" WHERE LOWER(name)=LOWER('" + std::wstring(chr) + L"')");
     SetGameResult(std::wstring(L"AA title set to ") + titleNames[sel] + L" for '" + chr + L"'.");
+}
+
+// ============================================================
+// Pro Tools versions of Currency / Inventory
+// Read from Pro Tools character field, output to Pro Tools result
+// ============================================================
+
+static void DoProShowInventory() {
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndProCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name in the Character field.",
+            L"Character Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    if (!CheckServerRunning(L"Show Inventory")) return;
+
+    std::wstring sql =
+        L"SELECT ci.slotid, i.name, ci.charges "
+        L"FROM character_inventory ci "
+        L"JOIN items i ON i.id=ci.itemid "
+        L"JOIN character_data cd ON cd.id=ci.id "
+        L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"') "
+        L"ORDER BY ci.slotid";
+    std::wstring result = RunQueryTable(sql);
+    SetGameResult(std::wstring(L"Inventory for '") + chr +
+        L"' (slots 0-21 are equipped):\r\n\r\n" + result);
+}
+
+static void DoProShowCurrency() {
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndProCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name in the Character field.",
+            L"Character Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    if (!CheckServerRunning(L"Show Currency")) return;
+
+    std::wstring sql =
+        L"SELECT cc.platinum, cc.gold, cc.silver, cc.copper, "
+        L"cc.platinum_bank, cc.gold_bank, cc.silver_bank, cc.copper_bank, "
+        L"cc.platinum_cursor, cc.gold_cursor, cc.silver_cursor, cc.copper_cursor "
+        L"FROM character_currency cc "
+        L"JOIN character_data cd ON cd.id=cc.id "
+        L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"')";
+    std::wstring result = RunQueryTable(sql);
+    SetGameResult(std::wstring(L"Currency for '") + chr + L"':\r\n\r\n" + result);
 }
 
 static void DoItemSearch() {
