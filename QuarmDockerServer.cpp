@@ -50,13 +50,14 @@ static const wchar_t* APP_CLASS   = L"QuarmServerManager";
 static const wchar_t* APP_TITLE   = L"Quarm Docker Server";
 static const wchar_t* PANEL_CLASS = L"QSMPanel";
 static const wchar_t* CONTAINER   = L"quarm-server";
-static const int      NUM_TABS    = 7;
+static const int      NUM_TABS    = 8;
 static const int      POLL_MS     = 5000;
 
 // Tab labels
 static const wchar_t* TAB_LABELS[NUM_TABS] = {
     L"Status", L"Admin Tools", L"Player Tools",
-    L"Backup & Restore", L"Log Viewer", L"Network", L"Advanced"
+    L"Backup & Restore", L"Log Viewer", L"Network", L"Advanced",
+    L"Game Tools"
 };
 
 // Panel index constants for readability
@@ -67,6 +68,21 @@ static const wchar_t* TAB_LABELS[NUM_TABS] = {
 #define TAB_LOG      4
 #define TAB_NETWORK  5
 #define TAB_ADVANCED 6
+#define TAB_GAME     7
+
+// --- Game Tools tab control IDs (add to resource.h) ---
+#define IDC_GAME_ITEM_SEARCH     5001
+#define IDC_BTN_ITEM_SEARCH      5002
+#define IDC_GAME_ITEM_ID         5003
+#define IDC_GAME_CHAR_NAME       5004
+#define IDC_BTN_GIVE_ITEM        5005
+#define IDC_GAME_RESULT          5006
+#define IDC_GAME_ERA_COMBO       5007
+#define IDC_BTN_SET_ERA          5008
+#define IDC_GAME_ZONE_COMBO      5009
+#define IDC_BTN_SET_ZONE_COUNT   5010
+#define IDC_GAME_ERA_CURRENT     5011
+#define IDC_GAME_ZONE_CURRENT    5012
 
 // Process name translation table
 struct ProcEntry { const char* proc; const wchar_t* label; };
@@ -604,6 +620,49 @@ static bool CheckServerRunning(const wchar_t* title) {
     return true;
 }
 
+// Forward declarations for functions defined later
+static bool GetNoBackupOnStop();
+
+// Check if a character's account is currently active (logged in)
+// Returns: 1 = online, 0 = offline, -1 = character not found or error
+static int IsCharacterOnline(const wchar_t* charName) {
+    std::wstring sql =
+        L"SELECT a.active FROM account a "
+        L"JOIN character_data cd ON cd.account_id=a.id "
+        L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(charName) + L"')";
+    std::wstring result = RunQuery(sql);
+    if (result == L"(no results)" || result.find(L"ERROR") != std::wstring::npos)
+        return -1;
+    if (result.find(L"1") != std::wstring::npos)
+        return 1;
+    return 0;
+}
+
+// Restart server (stop + start) used by Move online and Era/Zone changes
+static void DoRestartServerAsync() {
+    if (g_operationBusy) return;
+    bool noBackup = GetNoBackupOnStop();
+    SetBusy(true);
+    SetStatus(L"Restarting server...");
+    std::thread([noBackup]{
+        if (!noBackup) {
+            wchar_t bd[MAX_PATH]; wcscpy_s(bd, g_installDir);
+            PathAppendW(bd, L"config\\backups");
+            CreateDirectoryW(bd, nullptr);
+            std::wstring ds = GetDateStamp();
+            wchar_t ff[MAX_PATH]; wcscpy_s(ff, bd);
+            PathAppendW(ff, (L"backup_" + ds + L".sql").c_str());
+            std::wstring cmd = L"cmd /c docker exec " + std::wstring(CONTAINER) +
+                L" mariadb-dump quarm > \"" + std::wstring(ff) + L"\"";
+            RunCommand(cmd, g_installDir);
+        }
+        RunCommand(L"docker compose down", g_installDir);
+        RunCommand(L"docker compose up -d", g_installDir);
+        auto* res = new AsyncResult{ true, L"Server restarted." };
+        PostMessageW(g_hwndMain, WM_ASYNC_DONE, TAB_STATUS, (LPARAM)res);
+    }).detach();
+}
+
 static void DoMakeGM() {
     wchar_t acct[128] = {};
     if (!AdmGetAccount(acct, 128)) return;
@@ -913,11 +972,43 @@ static void DoMoveToBind() {
     std::wstring info = RunQuery(infoSql);
     SetPlrResult(info);
 
+    int online = IsCharacterOnline(chr);
+    if (online == -1) {
+        SetPlrResult(std::wstring(L"Character '") + chr + L"' not found.");
+        return;
+    }
+
+    if (online == 1) {
+        // Option C: character is online — offer camp-first or restart
+        int r = MessageBoxW(g_hwndMain,
+            (std::wstring(L"Move '") + chr + L"' to their bind point?\r\n\r\n" +
+             info + L"\r\n\r\n"
+             L"Character is currently ONLINE. You can either:\r\n\r\n"
+             L"  YES = Move in DB + Restart server (all players disconnect briefly)\r\n"
+             L"  NO  = Cancel (have them camp to char select first, then try again)\r\n").c_str(),
+            L"Character Is Online", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+        if (r != IDYES) {
+            SetPlrResult(L"Cancelled. Have the character camp to character select first, then click Move to Bind again.");
+            return;
+        }
+        // Proceed with DB update + restart
+        std::wstring moveSql =
+            L"UPDATE character_data cd "
+            L"JOIN character_bind cb ON cb.id=cd.id "
+            L"JOIN zone z ON z.zoneidnumber=cb.zone_id "
+            L"SET cd.zone_id=cb.zone_id, cd.x=cb.x, cd.y=cb.y, cd.z=cb.z, cd.heading=cb.heading "
+            L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"') AND cb.is_home=0";
+        RunQuery(moveSql);
+        SetPlrResult(std::wstring(L"'") + chr + L"' bind point set in DB. Restarting server...");
+        DoRestartServerAsync();
+        return;
+    }
+
+    // Offline — proceed normally
     int r = MessageBoxW(g_hwndMain,
         (std::wstring(L"Move '") + chr + L"' to their bind point?\r\n\r\n" +
          info + L"\r\n\r\n"
-         L"WARNING: Character must be LOGGED OUT or the server will overwrite this on logout.\r\n\r\n"
-         L"Continue?").c_str(),
+         L"Character is offline. Continue?").c_str(),
         L"Confirm Move to Bind", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
     if (r != IDYES) return;
 
@@ -972,11 +1063,41 @@ static void DoMoveToZone() {
         return;
     }
 
+    int online = IsCharacterOnline(chr);
+    if (online == -1) {
+        SetPlrResult(std::wstring(L"Character '") + chr + L"' not found.");
+        return;
+    }
+
+    if (online == 1) {
+        // Option C: character is online — offer camp-first or restart
+        int r = MessageBoxW(g_hwndMain,
+            (std::wstring(L"Move '") + chr + L"' to zone '" + zone + L"'?\r\n\r\n" +
+             zoneInfo + L"\r\n\r\n"
+             L"Character is currently ONLINE. You can either:\r\n\r\n"
+             L"  YES = Move in DB + Restart server (all players disconnect briefly)\r\n"
+             L"  NO  = Cancel (have them camp to char select first, then try again)\r\n").c_str(),
+            L"Character Is Online", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+        if (r != IDYES) {
+            SetPlrResult(L"Cancelled. Have the character camp to character select first, then click Move to Zone again.");
+            return;
+        }
+        std::wstring moveSql =
+            L"UPDATE character_data cd "
+            L"JOIN zone z ON LOWER(z.short_name)=LOWER('" + std::wstring(zone) + L"') "
+            L"SET cd.zone_id=z.zoneidnumber, cd.x=z.safe_x, cd.y=z.safe_y, cd.z=z.safe_z, cd.heading=z.safe_heading "
+            L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"')";
+        RunQuery(moveSql);
+        SetPlrResult(std::wstring(L"'") + chr + L"' zone set to '" + zone + L"' in DB. Restarting server...");
+        DoRestartServerAsync();
+        return;
+    }
+
+    // Offline — proceed normally
     int r = MessageBoxW(g_hwndMain,
         (std::wstring(L"Move '") + chr + L"' to zone '" + zone + L"'?\r\n\r\n" +
          zoneInfo + L"\r\n\r\n"
-         L"WARNING: Character must be LOGGED OUT or the server will overwrite this on logout.\r\n\r\n"
-         L"Continue?").c_str(),
+         L"Character is offline. Continue?").c_str(),
         L"Confirm Move to Zone", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
     if (r != IDYES) return;
 
@@ -1716,6 +1837,370 @@ static void DoStartFresh() {
 }
 
 // ============================================================
+// TAB 8 — GAME TOOLS PANEL
+// ============================================================
+
+static HWND g_hwndGameItemSearch = nullptr;
+static HWND g_hwndGameItemId     = nullptr;
+static HWND g_hwndGameCharName   = nullptr;
+static HWND g_hwndGameResult     = nullptr;
+static HWND g_hwndGameEraCbo     = nullptr;
+static HWND g_hwndGameZoneCbo    = nullptr;
+static HWND g_hwndGameEraCur     = nullptr;
+static HWND g_hwndGameZoneCur    = nullptr;
+
+static void SetGameResult(const std::wstring& text) {
+    if (g_hwndGameResult)
+        SetWindowTextW(g_hwndGameResult, text.c_str());
+}
+
+static void CreateGameToolsPanel(HWND parent) {
+    int y = 10;
+
+    MakeLabel(parent, L"Item Lookup:", 20, y, 120, 20);
+    y += 22;
+    MakeLabel(parent, L"Search:", 20, y+4, 50, 20);
+    g_hwndGameItemSearch = MakeEdit(parent, IDC_GAME_ITEM_SEARCH, 76, y, 240, 24);
+    MakeButton(parent, L"Search Items", IDC_BTN_ITEM_SEARCH, 326, y, 110, 26);
+    MakeLabel(parent, L"(name or item ID)", 446, y+4, 150, 20);
+    y += 34;
+
+    MakeLabel(parent, L"Give Item:", 20, y, 80, 20);
+    y += 22;
+    MakeLabel(parent, L"Character:", 20, y+4, 65, 20);
+    g_hwndGameCharName = MakeEdit(parent, IDC_GAME_CHAR_NAME, 90, y, 150, 24);
+    MakeLabel(parent, L"Item ID:", 250, y+4, 52, 20);
+    g_hwndGameItemId = MakeEdit(parent, IDC_GAME_ITEM_ID, 306, y, 80, 24);
+    MakeButton(parent, L"Give Item", IDC_BTN_GIVE_ITEM, 396, y, 100, 26);
+    y += 40;
+
+    MakeLabel(parent, L"Server Settings (require restart):", 20, y, 250, 20);
+    y += 24;
+
+    MakeLabel(parent, L"Era / Expansion:", 20, y+4, 110, 20);
+    MakeLabel(parent, L"Current:", 136, y+4, 52, 20);
+    g_hwndGameEraCur = MakeLabel(parent, L"(unknown)", 190, y+4, 120, 20);
+    g_hwndGameEraCbo = MakeCombo(parent, IDC_GAME_ERA_COMBO, 320, y, 160, 200);
+    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Classic");
+    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Kunark");
+    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Velious");
+    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Luclin");
+    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Planes of Power");
+    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"All Expansions");
+    MakeButton(parent, L"Set Era", IDC_BTN_SET_ERA, 490, y, 80, 26);
+    y += 32;
+
+    MakeLabel(parent, L"Dynamic Zones:", 20, y+4, 100, 20);
+    MakeLabel(parent, L"Current:", 136, y+4, 52, 20);
+    g_hwndGameZoneCur = MakeLabel(parent, L"(unknown)", 190, y+4, 60, 20);
+    g_hwndGameZoneCbo = MakeCombo(parent, IDC_GAME_ZONE_COMBO, 320, y, 80, 200);
+    SendMessageW(g_hwndGameZoneCbo, CB_ADDSTRING, 0, (LPARAM)L"5");
+    SendMessageW(g_hwndGameZoneCbo, CB_ADDSTRING, 0, (LPARAM)L"10");
+    SendMessageW(g_hwndGameZoneCbo, CB_ADDSTRING, 0, (LPARAM)L"15");
+    SendMessageW(g_hwndGameZoneCbo, CB_ADDSTRING, 0, (LPARAM)L"20");
+    SendMessageW(g_hwndGameZoneCbo, CB_ADDSTRING, 0, (LPARAM)L"25");
+    MakeButton(parent, L"Set Zones", IDC_BTN_SET_ZONE_COUNT, 410, y, 90, 26);
+    MakeLabel(parent, L"(more zones = more RAM)", 510, y+4, 180, 20);
+    y += 42;
+
+    g_hwndGameResult = MakeResultBox(parent, IDC_GAME_RESULT, 20, y, 730, 200);
+}
+
+static void RefreshGameToolsTab() {
+    if (!IsContainerRunning()) {
+        if (g_hwndGameEraCur) SetWindowTextW(g_hwndGameEraCur, L"(server off)");
+        if (g_hwndGameZoneCur) SetWindowTextW(g_hwndGameZoneCur, L"(server off)");
+        return;
+    }
+    std::wstring eraSql = L"SELECT rule_value FROM rule_values WHERE rule_name='World:CurrentExpansion'";
+    std::wstring eraResult = RunQuery(eraSql);
+    if (eraResult != L"(no results)") {
+        std::wstring display = L"(unknown)";
+        if (eraResult.find(L"-1") != std::wstring::npos) display = L"All";
+        else if (eraResult.find(L"4") != std::wstring::npos) display = L"PoP";
+        else if (eraResult.find(L"3") != std::wstring::npos) display = L"Luclin";
+        else if (eraResult.find(L"2") != std::wstring::npos) display = L"Velious";
+        else if (eraResult.find(L"1") != std::wstring::npos) display = L"Kunark";
+        else if (eraResult.find(L"0") != std::wstring::npos) display = L"Classic";
+        if (g_hwndGameEraCur) SetWindowTextW(g_hwndGameEraCur, display.c_str());
+    }
+    std::wstring zoneSql = L"SELECT dynamics FROM launcher LIMIT 1";
+    std::wstring zoneResult = RunQuery(zoneSql);
+    if (zoneResult != L"(no results)") {
+        std::wstring num;
+        bool foundNewline = false;
+        for (auto c : zoneResult) {
+            if (c == L'\n' || c == L'\r') { foundNewline = true; continue; }
+            if (foundNewline && iswdigit(c)) num += c;
+            else if (foundNewline && !num.empty()) break;
+        }
+        if (!num.empty() && g_hwndGameZoneCur)
+            SetWindowTextW(g_hwndGameZoneCur, num.c_str());
+    }
+}
+
+static void DoItemSearch() {
+    wchar_t search[256] = {};
+    GetWindowTextW(g_hwndGameItemSearch, search, 256);
+    if (!search[0]) {
+        MessageBoxW(g_hwndMain, L"Enter an item name or item ID to search.",
+            L"Search Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    if (!CheckServerRunning(L"Item Lookup")) return;
+
+    bool isNumeric = true;
+    for (wchar_t* p = search; *p; p++) {
+        if (!iswdigit(*p)) { isNumeric = false; break; }
+    }
+
+    std::wstring sql;
+    if (isNumeric) {
+        sql = L"SELECT id, Name, ItemType, Classes, Races, Slots, Price, StackSize "
+              L"FROM items WHERE id=" + std::wstring(search);
+    } else {
+        sql = L"SELECT id, Name, ItemType, Classes, Races, Slots, Price, StackSize "
+              L"FROM items WHERE LOWER(Name) LIKE LOWER('%" + std::wstring(search) + L"%') "
+              L"ORDER BY Name LIMIT 50";
+    }
+    std::wstring result = RunQuery(sql);
+    SetGameResult(std::wstring(L"Item search for '") + search + L"':\r\n\r\n" + result);
+}
+
+static void DoGiveItem() {
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndGameCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name.",
+            L"Character Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    wchar_t itemStr[32] = {};
+    GetWindowTextW(g_hwndGameItemId, itemStr, 32);
+    if (!itemStr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter an item ID. Use Item Lookup to find IDs.",
+            L"Item ID Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    for (wchar_t* p = itemStr; *p; p++) {
+        if (!iswdigit(*p)) {
+            MessageBoxW(g_hwndMain, L"Item ID must be a number.",
+                L"Invalid Item ID", MB_OK | MB_ICONWARNING);
+            return;
+        }
+    }
+    if (!CheckServerRunning(L"Give Item")) return;
+
+    // Validate item exists
+    std::wstring itemSql = L"SELECT id, Name, StackSize FROM items WHERE id=" + std::wstring(itemStr);
+    std::wstring itemInfo = RunQuery(itemSql);
+    if (itemInfo == L"(no results)") {
+        SetGameResult(std::wstring(L"Item ID ") + itemStr + L" not found in items table.");
+        return;
+    }
+
+    // Get character internal ID
+    std::wstring charSql = L"SELECT cd.id, cd.name FROM character_data cd "
+                           L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"')";
+    std::wstring charResult = RunQuery(charSql);
+    if (charResult == L"(no results)") {
+        SetGameResult(std::wstring(L"Character '") + chr + L"' not found.");
+        return;
+    }
+
+    // Parse character ID from result
+    std::wstring charIdStr;
+    {
+        bool foundNewline = false;
+        for (auto c : charResult) {
+            if (c == L'\n' || c == L'\r') { foundNewline = true; continue; }
+            if (foundNewline && iswdigit(c)) charIdStr += c;
+            else if (foundNewline && (c == L'\t' || c == L' ') && !charIdStr.empty()) break;
+        }
+    }
+    if (charIdStr.empty()) {
+        SetGameResult(L"Could not parse character ID from database result.");
+        return;
+    }
+
+    // Find open general inventory slot (23-30), searching from highest
+    std::wstring slotSql = L"SELECT slotid FROM character_inventory "
+                           L"WHERE id=" + charIdStr +
+                           L" AND slotid BETWEEN 23 AND 30 ORDER BY slotid";
+    std::wstring slotResult = RunQuery(slotSql);
+
+    bool slotUsed[8] = {};
+    if (slotResult != L"(no results)") {
+        std::wstring num;
+        for (auto c : slotResult) {
+            if (iswdigit(c)) { num += c; }
+            else if (!num.empty()) {
+                int slot = _wtoi(num.c_str());
+                if (slot >= 23 && slot <= 30) slotUsed[slot - 23] = true;
+                num.clear();
+            }
+        }
+        if (!num.empty()) {
+            int slot = _wtoi(num.c_str());
+            if (slot >= 23 && slot <= 30) slotUsed[slot - 23] = true;
+        }
+    }
+
+    int openSlot = -1;
+    for (int i = 7; i >= 0; --i) {
+        if (!slotUsed[i]) { openSlot = 23 + i; break; }
+    }
+    if (openSlot == -1) {
+        SetGameResult(std::wstring(L"Character '") + chr +
+            L"' has no open general inventory slots (23-30 all full).\r\n"
+            L"Free up an inventory slot first.");
+        return;
+    }
+
+    int online = IsCharacterOnline(chr);
+
+    // Confirm
+    std::wstring msg = std::wstring(L"Give item to '") + chr + L"'?\r\n\r\n" +
+        L"Item: " + std::wstring(itemStr) + L"\r\n" + itemInfo + L"\r\n" +
+        L"Slot: " + std::to_wstring(openSlot) + L" (general inventory)\r\n\r\n";
+    if (online == 1)
+        msg += L"Character is ONLINE. Item will appear after they camp to\r\ncharacter select and re-enter world.\r\n\r\n";
+    else
+        msg += L"Character is offline. Item will appear on next login.\r\n\r\n";
+    msg += L"Continue?";
+
+    int r = MessageBoxW(g_hwndMain, msg.c_str(),
+        L"Confirm Give Item", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
+    if (r != IDYES) return;
+
+    // Determine charges (use StackSize if stackable, else 1)
+    int charges = 1;
+    {
+        std::wstring lastNum;
+        bool inDataLine = false;
+        for (auto c : itemInfo) {
+            if (c == L'\n' || c == L'\r') { inDataLine = true; lastNum.clear(); continue; }
+            if (inDataLine && c == L'\t') lastNum.clear();
+            if (inDataLine && iswdigit(c)) lastNum += c;
+        }
+        if (!lastNum.empty()) {
+            int ss = _wtoi(lastNum.c_str());
+            if (ss > 1) charges = ss;
+        }
+    }
+
+    // INSERT
+    std::wstring insertSql = L"INSERT INTO character_inventory (id, slotid, itemid, charges) VALUES (" +
+        charIdStr + L", " + std::to_wstring(openSlot) + L", " +
+        std::wstring(itemStr) + L", " + std::to_wstring(charges) + L")";
+    RunQuery(insertSql);
+
+    if (online == 1)
+        SetGameResult(std::wstring(L"Item ") + itemStr + L" added to '" + chr +
+            L"' in slot " + std::to_wstring(openSlot) + L".\r\n\r\n"
+            L"Character is online. They must camp to character select\r\n"
+            L"and re-enter world to receive the item.");
+    else
+        SetGameResult(std::wstring(L"Item ") + itemStr + L" added to '" + chr +
+            L"' in slot " + std::to_wstring(openSlot) + L".\r\n\r\n"
+            L"Item will appear in inventory on next login.");
+}
+
+static void DoSetEra() {
+    if (!CheckServerRunning(L"Set Era")) return;
+    int sel = (int)SendMessage(g_hwndGameEraCbo, CB_GETCURSEL, 0, 0);
+    if (sel == CB_ERR) {
+        MessageBoxW(g_hwndMain, L"Select an era from the dropdown.",
+            L"Era Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+
+    struct EraPreset { const wchar_t* name; const wchar_t* eraNum; int bitmask; int maxExpansion; };
+    EraPreset presets[] = {
+        { L"Classic",          L"0",  0,  0 },
+        { L"Kunark",           L"1",  1,  1 },
+        { L"Velious",          L"2",  3,  2 },
+        { L"Luclin",           L"3",  7,  3 },
+        { L"Planes of Power",  L"4",  15, 4 },
+        { L"All Expansions",   L"-1", 15, 99 },
+    };
+    auto& p = presets[sel];
+
+    int r = MessageBoxW(g_hwndMain,
+        (std::wstring(L"Set server era to '") + p.name + L"'?\r\n\r\n"
+         L"This changes:\r\n"
+         L"  World:CurrentExpansion = " + p.eraNum + L"\r\n"
+         L"  Character:DefaultExpansions = " + std::to_wstring(p.bitmask) + L"\r\n"
+         L"  All existing account expansion flags\r\n"
+         L"  Zone access restrictions\r\n\r\n"
+         L"Server will restart for this to take effect.\r\nRestart now?").c_str(),
+        L"Confirm Era Change", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+    if (r != IDYES) return;
+
+    SetGameResult(L"Applying era change...");
+
+    RunQuery(L"UPDATE rule_values SET rule_value='" + std::wstring(p.eraNum) +
+             L"' WHERE rule_name='World:CurrentExpansion'");
+    RunQuery(L"UPDATE rule_values SET rule_value='" + std::to_wstring(p.bitmask) +
+             L"' WHERE rule_name='Character:DefaultExpansions'");
+    RunQuery(L"UPDATE account SET expansion=" + std::to_wstring(p.bitmask));
+
+    if (p.maxExpansion < 99) {
+        RunQuery(L"UPDATE zone SET min_status=0 WHERE expansion<=" + std::to_wstring(p.maxExpansion));
+        RunQuery(L"UPDATE zone SET min_status=100 WHERE expansion>" + std::to_wstring(p.maxExpansion));
+    } else {
+        RunQuery(L"UPDATE zone SET min_status=0");
+    }
+
+    SetGameResult(std::wstring(L"Era set to '") + p.name + L"'. Restarting server...");
+    DoRestartServerAsync();
+}
+
+static void DoSetZoneCount() {
+    if (!CheckServerRunning(L"Set Zone Count")) return;
+    int sel = (int)SendMessage(g_hwndGameZoneCbo, CB_GETCURSEL, 0, 0);
+    if (sel == CB_ERR) {
+        MessageBoxW(g_hwndMain, L"Select a zone count from the dropdown.",
+            L"Zone Count Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    int counts[] = { 5, 10, 15, 20, 25 };
+    int newCount = counts[sel];
+
+    std::wstring nameSql = L"SELECT name FROM launcher LIMIT 1";
+    std::wstring nameResult = RunQuery(nameSql);
+    if (nameResult == L"(no results)") {
+        SetGameResult(L"No launcher found in database. Cannot change zone count.");
+        return;
+    }
+    std::wstring launcherName;
+    bool foundNewline = false;
+    for (auto c : nameResult) {
+        if (c == L'\n' || c == L'\r') { foundNewline = true; continue; }
+        if (foundNewline && c != L'\t' && c != L' ') launcherName += c;
+        else if (foundNewline && !launcherName.empty()) break;
+    }
+    if (launcherName.empty()) {
+        SetGameResult(L"Could not parse launcher name from database.");
+        return;
+    }
+
+    int r = MessageBoxW(g_hwndMain,
+        (std::wstring(L"Set dynamic zones to ") + std::to_wstring(newCount) +
+         L"?\r\n\r\nLauncher: " + launcherName +
+         L"\r\n\r\nMore zones = more RAM (~50-100 MB each).\r\n"
+         L"Server will restart for this to take effect.\r\nRestart now?").c_str(),
+        L"Confirm Zone Count Change", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+    if (r != IDYES) return;
+
+    RunQuery(L"UPDATE launcher SET dynamics=" + std::to_wstring(newCount) +
+             L" WHERE name='" + launcherName + L"'");
+    SetGameResult(std::wstring(L"Dynamic zones set to ") + std::to_wstring(newCount) +
+        L" for launcher '" + launcherName + L"'. Restarting server...");
+    DoRestartServerAsync();
+}
+
+// ============================================================
 // TAB PANEL SHOW/HIDE
 // ============================================================
 
@@ -1723,9 +2208,10 @@ static void ShowTab(int idx) {
     for (int i = 0; i < NUM_TABS; ++i)
         ShowWindow(g_hwndPanels[i], i == idx ? SW_SHOW : SW_HIDE);
     switch (idx) {
-        case TAB_STATUS:  RefreshStatusTab();   break;
-        case TAB_BACKUP:  RefreshBackupList();  break;
-        case TAB_NETWORK: RefreshNetworkTab();  break;
+        case TAB_STATUS:  RefreshStatusTab();    break;
+        case TAB_BACKUP:  RefreshBackupList();   break;
+        case TAB_NETWORK: RefreshNetworkTab();   break;
+        case TAB_GAME:    RefreshGameToolsTab(); break;
         default: break;
     }
 }
@@ -1812,6 +2298,7 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         CreateLogPanel(g_hwndPanels[TAB_LOG]);
         CreateNetworkPanel(g_hwndPanels[TAB_NETWORK]);
         CreateAdvancedPanel(g_hwndPanels[TAB_ADVANCED]);
+        CreateGameToolsPanel(g_hwndPanels[TAB_GAME]);
 
         for (int i = 0; i < NUM_TABS; ++i)
             ApplyFont(g_hwndPanels[i], g_hFont);
@@ -1823,6 +2310,7 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (g_hwndAdvResult)   SendMessage(g_hwndAdvResult,  WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
             if (g_hwndLogText)     SendMessage(g_hwndLogText,    WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
             if (g_hwndProcList)    SendMessage(g_hwndProcList,   WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
+            if (g_hwndGameResult)  SendMessage(g_hwndGameResult, WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
         }
 
         SetTimer(hwnd, TIMER_POLL, POLL_MS, nullptr);
@@ -2065,13 +2553,20 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
             break;
         }
+
+        // --- GAME TOOLS TAB ---
+        case IDC_BTN_ITEM_SEARCH:    DoItemSearch();     break;
+        case IDC_BTN_GIVE_ITEM:      DoGiveItem();       break;
+        case IDC_BTN_SET_ERA:        DoSetEra();         break;
+        case IDC_BTN_SET_ZONE_COUNT: DoSetZoneCount();   break;
+
         } // end switch id
         return 0;
     }
 
     case WM_GETMINMAXINFO: {
         MINMAXINFO* mmi = (MINMAXINFO*)lp;
-        mmi->ptMinTrackSize = { 800, 580 };
+        mmi->ptMinTrackSize = { 900, 600 };
         return 0;
     }
 
@@ -2175,7 +2670,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow) {
 
     g_hwndMain = CreateWindowExW(0, APP_CLASS, APP_TITLE,
         WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, 900, 620,
+        CW_USEDEFAULT, CW_USEDEFAULT, 960, 640,
         nullptr, nullptr, hInst, nullptr);
     if (!g_hwndMain) return 1;
 
