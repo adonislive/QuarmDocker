@@ -51,21 +51,11 @@ jobs:
       run: choco install nsis --yes
       shell: pwsh
 
-    # -------------------------------------------------------
-    # 5. Install the inetc NSIS plugin
-    #    (used by the installer to download Docker Desktop
-    #    if the user doesn't have it yet)
-    # -------------------------------------------------------
-    - name: Install NSIS inetc plugin
-      run: |
-        $url = "https://nsis.sourceforge.io/mediawiki/images/c/c9/Inetc.zip"
-        Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\inetc.zip"
-        Expand-Archive "$env:TEMP\inetc.zip" -DestinationPath "$env:TEMP\inetc"
-        Copy-Item "$env:TEMP\inetc\Plugins\x86-ansi\inetc.dll" `
-          "C:\Program Files (x86)\NSIS\Plugins\x86-ansi\inetc.dll"
-        Copy-Item "$env:TEMP\inetc\Plugins\x86-unicode\inetc.dll" `
-          "C:\Program Files (x86)\NSIS\Plugins\x86-unicode\inetc.dll"
-      shell: pwsh
+    # --------------------------------------------------------
+    # 5. inetc NSIS plugin is bundled in nsis-plugins/
+    #    No download needed — !addplugindir in the .nsi
+    #    points makensis to the repo's local copy
+    # --------------------------------------------------------
 
     # -------------------------------------------------------
     # 6. Compile QuarmDockerInstaller.exe
