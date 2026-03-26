@@ -74,11 +74,28 @@ UPDATE launcher SET dynamics=0 WHERE name='zone1';
 UPDATE launcher SET dynamics=0 WHERE name='zone2';
 UPDATE launcher SET dynamics=0 WHERE name='zone3';"
 
-# Fix: account_inventory table is missing from the DB dump — create from source schema
-mariadb --database=quarm -e "source /src/utils/sql/git/required/2025_3_23_created_account_inventory_table.sql"
+# ============================================================
+# Migrations missing from the DB dump
+# These create tables/columns the Quarm server code expects
+# but that are not present in the database_full archive.
+# Verified missing via information_schema check 2026-03-25.
+# ============================================================
 
-# Fix: player_event_logs table missing from DB dump
+# Tables missing from dump
+mariadb --database=quarm -e "source /src/utils/sql/git/required/2025_3_23_created_account_inventory_table.sql"
 mariadb --database=quarm -e "source /src/utils/sql/git/required/2024_12_23_player_events_tables.sql"
+mariadb --database=quarm -e "source /src/utils/sql/git/required/2023_09_11_first_to_engage_table.sql"
+mariadb --database=quarm -e "source /src/utils/sql/git/required/2023_11_25_qs_player_ks_log.sql"
+mariadb --database=quarm -e "source /src/utils/sql/git/required/2023_12_29_character_legacy_item_lockouts.sql"
+mariadb --database=quarm -e "source /src/utils/sql/git/required/2024_7_20_spell_buckets.sql"
+mariadb --database=quarm -e "source /src/utils/sql/git/required/2024_12_13_character_rebirth.sql"
+mariadb --database=quarm -e "source /src/utils/sql/git/required/2024_12_21_create_tbl_character_combination_unlocks.sql"
+mariadb --database=quarm -e "source /src/utils/sql/git/required/2024_12_28_skill_difficulty_by_class.sql"
+mariadb --database=quarm -e "source /src/utils/sql/git/required/2025_1_7_account_forced_guild.sql"
+
+# Columns missing from dump (ALTER TABLE on existing tables)
+mariadb --database=quarm -e "source /src/utils/sql/git/required/2023_12_03_character_buffs_bufftype.sql"
+mariadb --database=quarm -e "source /src/utils/sql/git/required/2024_12_14_alter_spellsnew_persist_death.sql"
 
 # Fix: Allow GMs to attack, cast, drop items, and use tradeskill containers like normal players
 mariadb --database=quarm -e "UPDATE rule_values SET rule_value='false' WHERE rule_name='Quarm:EnableAdminChecks';"
