@@ -6,9 +6,9 @@
 ; Build: makensis QuarmDockerInstaller.nsi
 ;   OR right-click the file -> "Compile NSIS Script"
 ;
-; inetc plugin (needed if Docker Desktop must be downloaded):
-;   https://nsis.sourceforge.io/Inetc_plug-in
-;   Copy inetc.dll to C:\Program Files (x86)\NSIS\Plugins\x86-unicode\
+; inetc plugin is bundled in nsis-plugins/ (zLib license, see LICENSE-inetc.txt)
+; No manual plugin installation needed.
+!addplugindir /x86-unicode ".\nsis-plugins\x86-unicode"
 ;
 ; Place these files in the same folder as this .nsi before building:
 ;   docker-compose.yml
