@@ -4715,6 +4715,68 @@ static void CreateGameToolsPanel(HWND parent) {
     g_hwndGameResult = MakeResultBox(parent, IDC_GAME_RESULT, 20, y, 940, 120);
 }
 
+// ============================================================
+// CalcEXPForLevel — mirrors Client::GetEXPForLevel from zone/exp.cpp
+// 
+// Replicates the server-side formula so the GUI can compute
+// the correct exp value when setting a character's level.
+//
+// Exp varies by RACE and LEVEL (not class).
+// Formula: (check_level)^3 * playermod * mod
+//   where check_level = level - 1
+// ============================================================
+
+static uint32_t CalcEXPForLevel(int level, int raceId) {
+    if (level <= 1) return 0;
+
+    int check_level = level - 1;
+    double base = (double)check_level * (double)check_level * (double)check_level;
+
+    // Race modifier (playermod starts at 10, then scaled by race %)
+    // Source: zone/exp.cpp GetEXPForLevel
+    double playermod = 10.0;
+    switch (raceId) {
+        case 11:  playermod *= 95.0;  break;  // Halfling
+        case 2:   playermod *= 105.0; break;  // Barbarian
+        case 10:  playermod *= 115.0; break;  // Ogre
+        case 9:                                // Troll
+        case 128: playermod *= 120.0; break;  // Iksar
+        default:  playermod *= 100.0; break;  // Human(1), Erudite(3), Wood Elf(4),
+                                               // High Elf(5), Dark Elf(6), Half Elf(7),
+                                               // Dwarf(8), Gnome(12), Vah Shir(130)
+    }
+
+    // Level modifier
+    double mod;
+    if      (check_level <= 29) mod = 1.0;
+    else if (check_level <= 34) mod = 1.1;
+    else if (check_level <= 39) mod = 1.2;
+    else if (check_level <= 44) mod = 1.3;
+    else if (check_level <= 50) mod = 1.4;
+    else if (check_level == 51) mod = 1.5;
+    else if (check_level == 52) mod = 1.6;
+    else if (check_level == 53) mod = 1.7;
+    else if (check_level == 54) mod = 1.9;
+    else if (check_level == 55) mod = 2.1;
+    else if (check_level == 56) mod = 2.3;
+    else if (check_level == 57) mod = 2.5;
+    else if (check_level == 58) mod = 2.7;
+    else if (check_level == 59) mod = 3.0;
+    else if (check_level == 60) mod = 3.0;
+    else if (check_level == 61) mod = 3.225;
+    else if (check_level == 62) mod = 3.45;
+    else if (check_level == 63) mod = 3.675;
+    else if (check_level == 64) mod = 3.9;
+    else                        mod = 4.125;  // 65+
+
+    return (uint32_t)(base * playermod * mod);
+}
+
+
+// ============================================================
+// DoSetCharLevel — UPDATED to set both level AND exp
+// ============================================================
+
 static void DoSetCharLevel() {
     if (!CheckServerRunning(L"Set Level")) return;
     wchar_t chr[128] = {};
@@ -4732,8 +4794,9 @@ static void DoSetCharLevel() {
     }
     int newLevel = sel + 1;
 
+    // Query name, current level, AND race so we can compute correct exp
     std::wstring checkSql =
-        L"SELECT cd.name, cd.level FROM character_data cd "
+        L"SELECT cd.name, cd.level, cd.race FROM character_data cd "
         L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"')";
     std::wstring current = RunQuery(checkSql);
     if (current == L"(no results)") {
@@ -4746,15 +4809,43 @@ static void DoSetCharLevel() {
             L"Character Online", MB_OK | MB_ICONWARNING);
         return;
     }
+
+    // Parse the race ID from the raw query result
+    // RunQuery returns header\nval1\tval2\tval3  — we need the 3rd column
+    int raceId = 1; // default to Human if parsing fails
+    {
+        std::wstring raceRaw = RunQuery(
+            L"SELECT race FROM character_data WHERE LOWER(name)=LOWER('" +
+            std::wstring(chr) + L"')");
+        // Strip header line, grab the number
+        bool pastHeader = false;
+        std::wstring num;
+        for (auto c : raceRaw) {
+            if (c == L'\n') { pastHeader = true; continue; }
+            if (c == L'\r') continue;
+            if (pastHeader && iswdigit(c)) num += c;
+            else if (pastHeader && !num.empty()) break;
+        }
+        if (!num.empty()) raceId = _wtoi(num.c_str());
+    }
+
+    // Compute correct exp for the new level + this character's race
+    uint32_t newExp = CalcEXPForLevel(newLevel, raceId);
+
     int r = MessageBoxW(g_hwndMain,
         (std::wstring(L"Set '") + chr + L"' to level " + std::to_wstring(newLevel) +
-         L"?\r\n\r\n" + current + L"\r\nContinue?").c_str(),
+         L"?\r\n(exp will be set to " + std::to_wstring(newExp) + L")" +
+         L"\r\n\r\n" + current + L"\r\nContinue?").c_str(),
         L"Confirm Set Level", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
     if (r != IDYES) return;
+
+    // Update BOTH level and exp in one statement
     RunQuery(L"UPDATE character_data SET level=" + std::to_wstring(newLevel) +
+             L", exp=" + std::to_wstring(newExp) +
              L" WHERE LOWER(name)=LOWER('" + std::wstring(chr) + L"')");
+
     SetGameResult(std::wstring(L"Level set to ") + std::to_wstring(newLevel) +
-        L" for '" + chr + L"'.\r\n\r\n"
+        L" for '" + chr + L"' (exp=" + std::to_wstring(newExp) + L").\r\n\r\n"
         L"Character will see the new level on next login.\r\n"
         L"Note: XP bar and spell list may need a zone-in to fully update.");
 }
