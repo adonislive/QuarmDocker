@@ -1,0 +1,2 @@
+INetC NSIS plugin - zLib/libpng license
+https://nsis.sourceforge.io/Inetc_plug-in
