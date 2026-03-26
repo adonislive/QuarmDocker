@@ -67,13 +67,16 @@ Open the **Quarm Docker Server** app from your desktop shortcut. All server mana
 
 | Tab | What it does |
 |-----|-------------|
-| **Status** | Start and stop the server. Shows whether each internal service (database, world, zones, etc.) is running. |
-| **Admin Tools** | Manage accounts — make/remove GM, list accounts, reset passwords, see who is online and recent logins. |
-| **Player Tools** | Look up characters, view inventory and currency, move a stuck character, give platinum, view corpses. |
-| **Backup & Restore** | Take a manual backup, restore from a previous backup, export/import character data. |
-| **Log Viewer** | View the live server log output from inside the container. |
-| **Network** | Switch between local-only and LAN mode. Write eqhost.txt to your EQ client folder. |
-| **Advanced** | Rebuild the server image, wipe and start fresh, open install folder, settings. |
+| **Status** | Start, stop, and restart the server. Shows service health, uptime, and active player count. Set the server era (Classic through Planes of Power or All Expansions), change the Message of the Day, send server-wide announcements, and manage raid bosses (check, spawn, despawn, list active). |
+| **Player Tools** | Look up characters by account or name, view inventory, currency, and corpses. Move stuck characters to their bind point or a specific zone. Search characters by level range and class. View recent logins, who is online, and IP history. Load and edit character faction standings with quick-set presets (Ally, Warmly, Indifferent, KOS). |
+| **Pro Tools** | Full character management — set level, AA points, race, class, gender, rename characters, set surnames, and assign AA titles. Give platinum, search and give items by name or ID, search and scribe spells (individually or all at once), view and edit individual skills or max all skills, and look up loot tables by NPC or item name. |
+| **Admin Tools** | Manage accounts — make/remove GM, list accounts, reset passwords, suspend/unsuspend, ban/unban, and view active bans. View server-wide statistics. Delete characters (with double confirmation). Toggle in-game GM flag and God Mode on individual characters. |
+| **Zones** | View all running zones with spawn counts and ZEM (Zone Experience Modifier) values. Stop, restart, or repop individual zones. Start new zone instances, search for zones by name, and adjust dynamic zone count. Full zone environment editor — load any zone and adjust weather type, fog (start, end, density, color), and clip distances. |
+| **Server** | Adjust server-wide XP and AA rate multipliers with sliders (1x–10x). Full rule editor — search, browse, and modify any server rule value. Guild manager — list guilds, create new guilds, set leaders, disband, and view rosters. |
+| **Backup & Restore** | Take manual backups, restore from a previous backup, export/import character data. Clone a character with all gear, AAs, and spells under a new name. View database size. |
+| **Log Viewer** | View live server logs from multiple sources (container stdout, eqemu_debug.log, world.log, crash.log). Filter log output by keyword, choose how many lines to display, and enable auto-refresh on a 30-second interval. |
+| **Network** | View current server address and network mode (Local, LAN, or WAN). Switch between local-only and LAN mode by selecting a network adapter. Write eqhost.txt directly to your EQ client folder, copy your IP to clipboard, and test port 6000 connectivity. |
+| **Advanced** | Rebuild the server image or wipe and start fresh. View Docker logs, disk usage, and container stats. Utilities to copy eqhost.txt, open the install folder, or launch Docker Desktop. Settings for dark mode, always-on-top, start with Windows, backup-on-stop toggle, and backup retention (keep last 5, 10, 20, or unlimited backups). |
 
 ---
 
@@ -94,11 +97,13 @@ To let other computers on your home network connect to your server:
 
 ## Backups
 
-The server automatically takes a backup every time you stop it through the app. Backups are saved to `C:\QuarmDocker\config\backups\`.
+The server automatically takes a backup every time you stop it through the app (unless disabled in Advanced settings). Backups are saved to `C:\QuarmDocker\config\backups\`.
 
 To take a manual backup at any time, go to the **Backup & Restore** tab and click **Backup Now**.
 
 To restore: select a backup from the list and click **Restore Selected**. The server will stop, restore, and restart automatically.
+
+Backup retention is configurable in the **Advanced** tab — keep the last 5, 10, 20, or unlimited backups.
 
 ---
 
@@ -111,6 +116,7 @@ Make sure Docker Desktop is open and running (look for the whale icon in the sys
 - Check that the server shows RUNNING in the Status tab and all services show RUNNING
 - Check that `eqhost.txt` contains the correct IP address
 - For LAN connections, make sure you are using the server machine's LAN IP, not `127.0.0.1`
+- Use the **Test Port 6000** button on the Network tab to verify connectivity
 
 **Firewall rules exit: 1 in the install log**
 The installer may not have had administrator rights. Right-click the installer and choose **Run as administrator**, or ask someone to run the firewall PowerShell commands manually from an elevated PowerShell prompt.

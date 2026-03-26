@@ -28,17 +28,97 @@
 #include <algorithm>
 #include <functional>
 #include <filesystem>
+#include <map>
+#include <set>
+
+#include <dwmapi.h>
+#include <uxtheme.h>
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "dwmapi.lib")
+#pragma comment(lib, "uxtheme.lib")
 #pragma comment(linker, "\"/manifestdependency:type='win32' " \
     "name='Microsoft.Windows.Common-Controls' version='6.0.0.0' " \
     "processorArchitecture='*' " \
     "publicKeyToken='6595b64144ccf1df' language='*'\"")
 
-#include "resource.h"
+// ── Constants previously in resource.h (now inlined — no external file needed) ──
+
+#define TIMER_POLL               1
+
+#define IDC_TAB                  1000
+
+// Status tab
+#define IDC_BTN_START            1004
+#define IDC_BTN_STOP             1005
+#define IDC_STATUS_PROCESSES     1003
+
+// Admin tab
+#define IDC_ADM_ACCOUNT          1100
+#define IDC_ADM_PASSWORD         1101
+#define IDC_ADM_RESULT           1102
+#define IDC_BTN_MAKE_GM          1041
+#define IDC_BTN_REMOVE_GM        1103
+#define IDC_BTN_LIST_ACCOUNTS    1104
+#define IDC_BTN_RESET_PASSWORD   1105
+#define IDC_BTN_WHO_ONLINE       1106
+#define IDC_BTN_RECENT_LOGINS    1107
+#define IDC_BTN_IP_HISTORY       1108
+
+// Player Tools tab
+#define IDC_PLR_ACCOUNT          1110
+#define IDC_PLR_CHARNAME         1111
+#define IDC_PLR_ZONE             1112
+#define IDC_PLR_AMOUNT           1113
+#define IDC_PLR_RESULT           1114
+#define IDC_BTN_PLR_LIST_CHARS   1115
+#define IDC_BTN_PLR_CHAR_INFO    1116
+#define IDC_BTN_SHOW_INVENTORY   1117
+#define IDC_BTN_SHOW_CURRENCY    1118
+#define IDC_BTN_SHOW_ACCT_CHAR   1119
+#define IDC_BTN_MOVE_TO_BIND     1120
+#define IDC_BTN_FIND_ZONE        1121
+#define IDC_BTN_MOVE_TO_ZONE     1122
+#define IDC_BTN_GIVE_PLAT        1123
+#define IDC_BTN_LIST_CORPSES     1124
+#define IDC_BTN_CORPSES_BY_CHAR  1125
+
+// Backup & Restore tab
+#define IDC_BACKUP_LIST          1010
+#define IDC_BTN_BACKUP_NOW       1011
+#define IDC_BTN_RESTORE          1012
+#define IDC_BTN_EXPORT_CHARS     1013
+#define IDC_BTN_IMPORT_CHARS     1014
+
+// Log Viewer tab
+#define IDC_LOG_TEXT             1020
+#define IDC_BTN_LOAD_LOG         1021
+#define IDC_BTN_REFRESH_LOG      1022
+#define IDC_LOG_LINES_COMBO      1023
+
+// Network tab
+#define IDC_BTN_CHANGE_NETWORK   1031
+#define IDC_BTN_WRITE_EQHOST     1032
+#define IDC_NET_EQHOST_CONTENT   1033
+#define IDC_NET_ADAPTER_LIST     1034
+#define IDC_BTN_NET_CONFIRM      1035
+
+// Advanced tab
+#define IDC_ADV_RESULT           1053
+#define IDC_BTN_REBUILD          1045
+#define IDC_BTN_START_FRESH      1046
+#define IDC_BTN_COPY_EQHOST      1047
+#define IDC_BTN_OPEN_FOLDER      1048
+#define IDC_BTN_OPEN_DOCKER      1049
+#define IDC_CHK_AUTOSTART        1050
+#define IDC_CHK_NO_BACKUP        1051
+#define IDC_BACKUP_RETENTION     1052
+
+// Status bar
+#define IDC_STATUSBAR            1060
 
 namespace fs = std::filesystem;
 
@@ -50,27 +130,29 @@ static const wchar_t* APP_CLASS   = L"QuarmServerManager";
 static const wchar_t* APP_TITLE   = L"Quarm Docker Server";
 static const wchar_t* PANEL_CLASS = L"QSMPanel";
 static const wchar_t* CONTAINER   = L"quarm-server";
-static const int      NUM_TABS    = 8;
+static const int      NUM_TABS    = 10;
 static const int      POLL_MS     = 5000;
 
 // Tab labels
 static const wchar_t* TAB_LABELS[NUM_TABS] = {
-    L"Status", L"Admin Tools", L"Player Tools",
-    L"Backup & Restore", L"Log Viewer", L"Network", L"Advanced",
-    L"Game Tools"
+    L"Status", L"Player Tools", L"Pro Tools",
+    L"Admin Tools", L"Zones", L"Server", L"Backup & Restore",
+    L"Log Viewer", L"Network", L"Advanced"
 };
 
 // Panel index constants for readability
 #define TAB_STATUS   0
-#define TAB_ADMIN    1
-#define TAB_PLAYER   2
-#define TAB_BACKUP   3
-#define TAB_LOG      4
-#define TAB_NETWORK  5
-#define TAB_ADVANCED 6
-#define TAB_GAME     7
+#define TAB_PLAYER   1
+#define TAB_GAME     2
+#define TAB_ADMIN    3
+#define TAB_ZONES    4
+#define TAB_SERVER   5
+#define TAB_BACKUP   6
+#define TAB_LOG      7
+#define TAB_NETWORK  8
+#define TAB_ADVANCED 9
 
-// --- Game Tools tab control IDs (add to resource.h) ---
+// --- Game Tools tab control IDs (item search/give/era/zone) ---
 #define IDC_GAME_ITEM_SEARCH     5001
 #define IDC_BTN_ITEM_SEARCH      5002
 #define IDC_GAME_ITEM_ID         5003
@@ -84,6 +166,194 @@ static const wchar_t* TAB_LABELS[NUM_TABS] = {
 #define IDC_GAME_ERA_CURRENT     5011
 #define IDC_GAME_ZONE_CURRENT    5012
 
+// --- Pro Tools: character management ---
+#define IDC_PRO_CHAR_NAME        5200   // character name for char-management ops
+#define IDC_PRO_LEVEL_COMBO      5201   // level dropdown 1-65
+#define IDC_BTN_PRO_SET_LEVEL    5202   // Set Character Level button
+#define IDC_PRO_AA_EDIT          5203   // AA points numeric input
+#define IDC_BTN_PRO_SET_AA       5204   // Set AA Points button
+#define IDC_PRO_CLASS_COMBO      5205   // class dropdown
+#define IDC_BTN_PRO_SET_CLASS    5206   // Change Class button
+#define IDC_PRO_RACE_COMBO       5207   // race dropdown
+#define IDC_BTN_PRO_SET_RACE     5208   // Change Race button
+
+// --- Admin Tools: new account/character operations ---
+#define IDC_ADM_DEL_CHAR         5400
+#define IDC_BTN_SERVER_STATS     5401
+#define IDC_BTN_SUSPEND_ACCT     5402
+#define IDC_BTN_UNSUSPEND_ACCT   5403
+#define IDC_BTN_DELETE_CHAR      5404
+#define IDC_BTN_BAN_ACCT         5405
+#define IDC_BTN_UNBAN_ACCT       5406
+#define IDC_BTN_VIEW_BANS        5407
+
+// --- Advanced tab ---
+#define IDC_CHK_ALWAYS_ON_TOP    5300
+#define IDC_CHK_DARK_MODE        5301
+#define IDC_BTN_DOCKER_LOGS      5302
+#define IDC_BTN_DISK_USAGE       5303
+#define IDC_BTN_CONTAINER_STATS  5304
+#define IDC_ADV_SYS_RESULT       5305
+
+// --- Status tab additions ---
+#define IDC_STATUS_MOTD_EDIT     5500
+#define IDC_BTN_SET_MOTD         5501
+#define IDC_BTN_RESTART_SERVER   5502
+
+// --- Player Tools: search ---
+#define IDC_PLR_SEARCH_MIN       5600
+#define IDC_PLR_SEARCH_MAX       5601
+#define IDC_PLR_SEARCH_CLASS     5602
+#define IDC_BTN_PLR_SEARCH       5603
+
+// --- Pro Tools: new features ---
+#define IDC_PRO_PLAT_AMOUNT      5700
+#define IDC_BTN_PRO_GIVE_PLAT    5701
+#define IDC_PRO_NEWNAME          5702
+#define IDC_BTN_PRO_RENAME       5703
+#define IDC_PRO_SURNAME          5704
+#define IDC_BTN_PRO_SET_SURNAME  5705
+#define IDC_PRO_TITLE_COMBO      5706
+#define IDC_BTN_PRO_SET_TITLE    5707
+#define IDC_PRO_GENDER_COMBO     5708
+#define IDC_BTN_PRO_SET_GENDER   5709
+
+// --- Log viewer: new controls ---
+#define IDC_LOG_FILE_COMBO       5900
+#define IDC_LOG_FILTER_EDIT      5901
+#define IDC_BTN_APPLY_FILTER     5902
+#define IDC_CHK_AUTO_REFRESH     5903
+
+// --- Network: new controls ---
+#define IDC_BTN_TEST_PORT        6000
+#define IDC_BTN_COPY_IP          6001
+#define IDC_NET_MODE_LABEL       6002
+
+// --- Status tab: repop + announce ---
+#define IDC_BTN_REPOP_ZONES      6100
+#define IDC_ANNOUNCE_EDIT        6101
+#define IDC_BTN_SEND_ANNOUNCE    6102
+
+// --- Server tab: Rule Editor ---
+#define IDC_RULE_SEARCH          6200
+#define IDC_RULE_LIST            6201
+#define IDC_RULE_VALUE           6202
+#define IDC_BTN_LOAD_RULES       6203
+#define IDC_BTN_SAVE_RULE        6204
+#define IDC_BTN_RESET_RULE       6205
+#define IDC_RULE_SELECTED        6206
+
+// --- Server tab: XP Slider ---
+#define IDC_XP_SLIDER            6210
+#define IDC_XP_LABEL             6211
+#define IDC_BTN_APPLY_XP         6212
+#define IDC_AA_SLIDER            6213
+#define IDC_AA_LABEL             6214
+#define IDC_BTN_APPLY_AA         6215
+
+// --- Server tab: Guild Manager ---
+#define IDC_GUILD_LIST           6220
+#define IDC_GUILD_NAME           6221
+#define IDC_GUILD_LEADER         6222
+#define IDC_BTN_LIST_GUILDS      6223
+#define IDC_BTN_CREATE_GUILD     6224
+#define IDC_BTN_SET_GUILD_LEADER 6225
+#define IDC_BTN_DISBAND_GUILD    6226
+#define IDC_BTN_VIEW_ROSTER      6227
+#define IDC_SERVER_RESULT        6228
+
+// --- Pro Tools: Spawn Boss ---
+#define IDC_SPAWN_BOSS_COMBO     6300
+#define IDC_SPAWN_ZONE_EDIT      6301
+#define IDC_BTN_SPAWN_BOSS       6302
+
+// --- Pro Tools: Spell Scriber ---
+#define IDC_SPELL_SEARCH         6310
+#define IDC_BTN_SPELL_SEARCH     6311
+#define IDC_SPELL_LIST           6312
+#define IDC_BTN_SCRIBE_SPELL     6313
+#define IDC_BTN_SCRIBE_ALL       6314
+
+// --- Pro Tools: Faction Editor ---
+#define IDC_BTN_LOAD_FACTIONS    6320
+#define IDC_FACTION_LIST         6321
+#define IDC_FACTION_VALUE        6322
+#define IDC_BTN_SET_FACTION      6323
+#define IDC_BTN_FACTION_ALLY     6324
+#define IDC_BTN_FACTION_WARMLY   6325
+#define IDC_BTN_FACTION_INDIFF   6326
+#define IDC_BTN_FACTION_KOS      6327
+
+// --- Pro Tools: Skill Maxer ---
+#define IDC_BTN_MAX_SKILLS       6330
+
+// --- Player Tools: Loot Viewer ---
+#define IDC_LOOT_SEARCH          6340
+#define IDC_BTN_LOOT_BY_NPC      6341
+#define IDC_BTN_LOOT_BY_ITEM     6342
+
+// --- Pro Tools: Skill Editor ---
+#define IDC_SKILL_SEARCH         6350
+#define IDC_BTN_SKILL_SEARCH     6351
+#define IDC_SKILL_LIST           6352
+#define IDC_SKILL_VALUE          6353
+#define IDC_BTN_SET_SKILL        6354
+#define IDC_BTN_LOAD_SKILLS      6355
+
+// --- Admin Tools: GM/GodMode toggles ---
+#define IDC_ADM_GM_CHAR          6400
+#define IDC_BTN_TOGGLE_GM        6401
+#define IDC_BTN_TOGGLE_GODMODE   6402
+
+// --- Server Tab: Weather ---
+#define IDC_BTN_WEATHER_ON       6410
+#define IDC_BTN_WEATHER_OFF      6411
+
+// --- Backup: Clone Character ---
+#define IDC_CLONE_SOURCE         6420
+#define IDC_CLONE_NEWNAME        6421
+#define IDC_BTN_CLONE_CHAR       6422
+#define IDC_BTN_DB_SIZE          6423
+
+// --- Status: Zone Management ---
+#define IDC_ZONE_LIST            6500
+#define IDC_BTN_REFRESH_ZONES    6501
+#define IDC_BTN_STOP_ZONE        6502
+#define IDC_BTN_RESTART_ZONE     6503
+#define IDC_ZONE_START_EDIT      6504
+#define IDC_BTN_START_ZONE       6505
+
+// --- Status: Boss Management ---
+#define IDC_BTN_CHECK_BOSS       6510
+#define IDC_BTN_DESPAWN_BOSS     6511
+#define IDC_BTN_LIST_ACTIVE_BOSS 6512
+#define IDC_STATUS_RESULT        6513
+#define IDC_ZONE_FIND_EDIT       6514
+#define IDC_BTN_FIND_ZONE_STATUS 6515
+#define IDC_ZEM_VALUE            6516
+#define IDC_BTN_ZEM_SAVE         6517
+#define IDC_BTN_ZEM_DEFAULT      6518
+
+// --- Server: Zone Environment (weather/fog/clip) ---
+#define IDC_ENV_ZONE_EDIT        6520
+#define IDC_BTN_ENV_LOAD         6521
+#define IDC_ENV_WEATHER_COMBO    6522
+#define IDC_ENV_FOG_MIN          6523
+#define IDC_ENV_FOG_MAX          6524
+#define IDC_ENV_CLIP_MIN         6525
+#define IDC_ENV_CLIP_MAX         6526
+#define IDC_BTN_ENV_SAVE         6527
+#define IDC_ENV_FOG_DENSITY      6528
+#define IDC_ENV_FOG_R            6529
+#define IDC_ENV_FOG_G            6530
+#define IDC_ENV_FOG_B            6531
+#define IDC_BTN_ENV_DEFAULT      6532
+#define IDC_ENV_FIND_EDIT        6533
+#define IDC_BTN_ENV_FIND_ZONE    6534
+
+// --- Timers ---
+#define TIMER_LOG_REFRESH        2
+
 // Process name translation table
 struct ProcEntry { const char* proc; const wchar_t* label; };
 static const ProcEntry PROC_TABLE[] = {
@@ -94,6 +364,42 @@ static const ProcEntry PROC_TABLE[] = {
     { "queryserv",   L"Query Server " },
     { "ucs",         L"Chat Server  " },
     { nullptr, nullptr }
+};
+
+// Playable race lookup (non-contiguous IDs)
+struct RaceEntry { int id; const wchar_t* name; };
+static const RaceEntry RACE_TABLE[] = {
+    { 1,   L"Human" },     { 2,  L"Barbarian" }, { 3,  L"Erudite" },
+    { 4,   L"Wood Elf" },  { 5,  L"High Elf" },  { 6,  L"Dark Elf" },
+    { 7,   L"Half Elf" },  { 8,  L"Dwarf" },      { 9,  L"Troll" },
+    { 10,  L"Ogre" },      { 11, L"Halfling" },   { 12, L"Gnome" },
+    { 128, L"Iksar" },     { 130,L"Vah Shir" },
+};
+static const int RACE_TABLE_COUNT = 14;
+
+// Notable raid boss / named NPC lookup for spawn-on-demand
+struct BossEntry { int npcId; const wchar_t* name; const wchar_t* zone; };
+static const BossEntry BOSS_TABLE[] = {
+    { 32040, L"Lord Nagafen",            L"nagafen"     },
+    { 32018, L"Lady Vox",                L"permafrost"  },
+    { 64001, L"Phinigel Autropos",       L"kedge"       },
+    { 72003, L"Innoruuk",                L"fearplane"   },
+    { 73057, L"Cazic-Thule",             L"cazicthule"  },
+    { 87007, L"Gorenaire",               L"dreadlands"  },
+    { 76020, L"Venril Sathir",           L"karnor"      },
+    { 70005, L"Trakanon",                L"trakanon"    },
+    { 91009, L"King Tormax",             L"kael"        },
+    { 85208, L"Talendor",                L"westwastes"  },
+    { 97002, L"Vulak'Aerr",              L"veeshan"     },
+    { 117058,L"The Keeper of Souls",     L"potorment"   },
+};
+static const int BOSS_TABLE_COUNT = 12;
+
+// Playable class names (IDs 1-15, index = id-1)
+static const wchar_t* CLASS_NAMES[15] = {
+    L"Warrior", L"Cleric", L"Paladin", L"Ranger", L"Shadow Knight",
+    L"Druid", L"Monk", L"Bard", L"Rogue", L"Shaman",
+    L"Necromancer", L"Wizard", L"Magician", L"Enchanter", L"Beastlord"
 };
 
 // Registry key for auto-start
@@ -117,6 +423,129 @@ static HFONT     g_hFontMono   = nullptr;
 static wchar_t   g_installDir[MAX_PATH] = {};
 static bool      g_serverRunning  = false;
 static bool      g_operationBusy  = false;
+
+// Dark mode state (hoisted — used by PanelProc and paint code compiled before panels)
+static bool      g_darkMode     = false;
+static HBRUSH    g_hbrDark      = nullptr;   // panel/window background brush
+static HBRUSH    g_hbrDarkCtl   = nullptr;   // edit/listbox background brush
+static const COLORREF CLR_DARK_BG  = RGB(30, 30, 30);
+static const COLORREF CLR_DARK_CTL = RGB(45, 45, 48);
+static const COLORREF CLR_DARK_TXT = RGB(220, 220, 220);
+static const COLORREF CLR_DARK_ACCENT  = RGB(60, 60, 65);   // button/tab face
+static const COLORREF CLR_DARK_BORDER  = RGB(80, 80, 85);   // subtle borders
+static HBRUSH    g_hbrDarkAccent = nullptr;  // button/tab face brush
+
+// Status tab handles (hoisted)
+static HWND g_hwndStateLabel   = nullptr;
+static HWND g_hwndUptimeLabel  = nullptr;
+static HWND g_hwndProcList     = nullptr;
+static HWND g_hwndMotdEdit     = nullptr;
+static HWND g_hwndPlayerCount  = nullptr;
+
+// Player Tools panel handles (declared here so monitoring functions can reference them)
+static HWND g_hwndPlrAccount   = nullptr;
+static HWND g_hwndPlrCharName  = nullptr;
+static HWND g_hwndPlrZone      = nullptr;
+static HWND g_hwndPlrAmount    = nullptr;   // kept for IDC compat, unused in panel
+static HWND g_hwndPlrResult    = nullptr;
+static HWND g_hwndPlrSearchMin = nullptr;
+static HWND g_hwndPlrSearchMax = nullptr;
+static HWND g_hwndPlrSearchClass = nullptr;
+
+// Pro Tools panel handles (hoisted for cross-tab access)
+static HWND g_hwndProCharName    = nullptr;
+static HWND g_hwndProLevelCbo    = nullptr;
+static HWND g_hwndProAaEdit      = nullptr;
+static HWND g_hwndProClassCbo    = nullptr;
+static HWND g_hwndProRaceCbo     = nullptr;
+static HWND g_hwndProGenderCbo   = nullptr;
+static HWND g_hwndProPlatAmount  = nullptr;
+static HWND g_hwndProNewName     = nullptr;
+static HWND g_hwndProSurname     = nullptr;
+static HWND g_hwndProTitleCbo    = nullptr;
+
+// Era/zone HWNDs used by Status tab and Pro Tools operations
+static HWND g_hwndGameEraCbo   = nullptr;
+static HWND g_hwndGameZoneCbo  = nullptr;
+static HWND g_hwndGameEraCur   = nullptr;
+static HWND g_hwndGameZoneCur  = nullptr;
+
+// Admin panel handles
+static HWND g_hwndAdmResult    = nullptr;
+static HWND g_hwndAdmDelChar   = nullptr;
+
+// Log viewer handles
+static HWND g_hwndLogText      = nullptr;
+static HWND g_hwndLogLines     = nullptr;
+static HWND g_hwndLogFilter    = nullptr;
+static HWND g_hwndLogFileCombo = nullptr;
+static std::wstring g_logFullText;           // unfiltered log content for filtering
+
+// Network handles
+static HWND g_hwndNetModeLabel = nullptr;
+
+// Advanced handles
+static HWND g_hwndAdvResult    = nullptr;
+static HWND g_hwndAdvSysResult = nullptr;
+
+// Server tab handles (Rule Editor + Guild Manager + XP)
+static HWND g_hwndRuleSearch   = nullptr;
+static HWND g_hwndRuleList     = nullptr;
+static HWND g_hwndRuleValue    = nullptr;
+static HWND g_hwndRuleSelected = nullptr;
+static HWND g_hwndGuildList    = nullptr;
+static HWND g_hwndGuildName    = nullptr;
+static HWND g_hwndGuildLeader  = nullptr;
+static HWND g_hwndXpSlider     = nullptr;
+static HWND g_hwndXpLabel      = nullptr;
+static HWND g_hwndAaSlider     = nullptr;
+static HWND g_hwndAaLabel      = nullptr;
+static HWND g_hwndServerResult = nullptr;
+
+// Rule editor cached data
+struct RuleInfo { std::wstring name; std::wstring value; std::wstring origValue; };
+static std::vector<RuleInfo> g_rules;
+static std::vector<RuleInfo> g_rulesFiltered;
+
+// Pro Tools new handles
+static HWND g_hwndSpellSearch  = nullptr;
+static HWND g_hwndSpellList    = nullptr;
+static HWND g_hwndFactionList  = nullptr;
+static HWND g_hwndFactionValue = nullptr;
+static HWND g_hwndLootSearch   = nullptr;
+static HWND g_hwndAnnounceEdit = nullptr;
+static HWND g_hwndSkillSearch  = nullptr;
+static HWND g_hwndSkillList    = nullptr;
+static HWND g_hwndSkillValue   = nullptr;
+static HWND g_hwndAdmGMChar    = nullptr;
+static HWND g_hwndCloneSource  = nullptr;
+static HWND g_hwndCloneNewName = nullptr;
+
+// Zone management handles
+static HWND g_hwndZoneList     = nullptr;
+static HWND g_hwndZoneStartEdit = nullptr;
+static HWND g_hwndZoneFindEdit = nullptr;
+static HWND g_hwndStatusResult = nullptr;
+static HWND g_hwndZoneResult   = nullptr;
+static HWND g_hwndZemValue    = nullptr;
+static HWND g_hwndZemLabel    = nullptr;
+
+// Zone environment handles (Server tab)
+static HWND g_hwndEnvZoneEdit  = nullptr;
+static HWND g_hwndEnvWeatherCbo = nullptr;
+static HWND g_hwndEnvFogMin    = nullptr;
+static HWND g_hwndEnvFogMax    = nullptr;
+static HWND g_hwndEnvClipMin   = nullptr;
+static HWND g_hwndEnvClipMax   = nullptr;
+static HWND g_hwndEnvFogDensity = nullptr;
+static HWND g_hwndEnvFogR      = nullptr;
+static HWND g_hwndEnvFogG      = nullptr;
+static HWND g_hwndEnvFogB      = nullptr;
+static HWND g_hwndEnvFindEdit  = nullptr;
+
+// Large font for player count banner
+static HFONT g_hFontLarge      = nullptr;
+
 static std::atomic<bool> g_stopPolling{ false };
 
 // ============================================================
@@ -249,6 +678,17 @@ static std::wstring NormalizeNewlines(const std::wstring& s) {
 static std::wstring RunQuery(const std::wstring& sql) {
     std::wstring cmd = std::wstring(L"docker exec ") + CONTAINER +
         L" mariadb -e \"" + sql + L"\" quarm";
+    std::string out = TrimRight(RunCommand(cmd));
+    if (out.empty()) return L"(no results)";
+    return NormalizeNewlines(ToWide(out));
+}
+
+// RunQueryTable: same as RunQuery but passes --table for aligned ASCII box output.
+// Use this for any result shown directly to the user; use RunQuery only when
+// parsing the raw output programmatically.
+static std::wstring RunQueryTable(const std::wstring& sql) {
+    std::wstring cmd = std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb --table -e \"" + sql + L"\" quarm";
     std::string out = TrimRight(RunCommand(cmd));
     if (out.empty()) return L"(no results)";
     return NormalizeNewlines(ToWide(out));
@@ -448,7 +888,7 @@ static HWND MakeListBox(HWND parent, int id, int x, int y, int w, int h) {
 
 static HWND MakeCombo(HWND parent, int id, int x, int y, int w, int h) {
     return CreateWindowExW(0, L"COMBOBOX", L"",
-        WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_TABSTOP,
+        WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL,
         x, y, w, h, parent, (HMENU)(UINT_PTR)id, g_hInst, nullptr);
 }
 
@@ -478,8 +918,9 @@ struct AsyncResult {
 static void SetBusy(bool busy) {
     g_operationBusy = busy;
     if (g_hwndPanels[TAB_STATUS]) {
-        EnableWindow(GetDlgItem(g_hwndPanels[TAB_STATUS], IDC_BTN_START), !busy);
-        EnableWindow(GetDlgItem(g_hwndPanels[TAB_STATUS], IDC_BTN_STOP),  !busy);
+        EnableWindow(GetDlgItem(g_hwndPanels[TAB_STATUS], IDC_BTN_START),          !busy);
+        EnableWindow(GetDlgItem(g_hwndPanels[TAB_STATUS], IDC_BTN_STOP),           !busy);
+        EnableWindow(GetDlgItem(g_hwndPanels[TAB_STATUS], IDC_BTN_RESTART_SERVER), !busy);
     }
     if (g_hwndPanels[TAB_BACKUP]) {
         EnableWindow(GetDlgItem(g_hwndPanels[TAB_BACKUP], IDC_BTN_BACKUP_NOW),   !busy);
@@ -504,31 +945,124 @@ static void SetStatus(const wchar_t* text) {
 // TAB 1 — STATUS PANEL
 // ============================================================
 
-static HWND g_hwndStateLabel   = nullptr;
-static HWND g_hwndUptimeLabel  = nullptr;
-static HWND g_hwndProcList     = nullptr;
+// ============================================================
+// FORWARD DECLARATIONS (functions defined later, called earlier)
+// ============================================================
+
+static bool CheckServerRunning(const wchar_t* title);
+static int  IsCharacterOnline(const wchar_t* charName);
+static bool GetNoBackupOnStop();
+static void SetPlrResult(const std::wstring& text);
+static void SetGameResult(const std::wstring& text);
+static void DoRestartServerAsync();
+static void DoRefreshZones();
+static std::wstring ExtractZoneFromList();
+
+// ============================================================
+// TAB 1 — STATUS PANEL
+// ============================================================
 
 static void CreateStatusPanel(HWND parent) {
-    MakeLabel(parent, L"Server State:", 20, 20, 120, 20);
-    g_hwndStateLabel = MakeLabel(parent, L"Checking...", 150, 20, 300, 22, SS_SUNKEN);
-
-    MakeLabel(parent, L"Uptime:", 20, 52, 120, 20);
-    g_hwndUptimeLabel = MakeLabel(parent, L"", 150, 52, 300, 20);
-
-    MakeLabel(parent, L"Services:", 20, 84, 120, 20);
+    int y = 6;
+    MakeLabel(parent, L"Server:", 20, y+2, 50, 22);
+    g_hwndStateLabel = MakeLabel(parent, L"Checking...", 76, y, 140, 24, SS_SUNKEN);
+    y += 26;
+    MakeLabel(parent, L"Uptime:", 20, y+2, 50, 20);
+    g_hwndUptimeLabel = MakeLabel(parent, L"", 76, y+2, 200, 20);
+    y += 24;
+    MakeLabel(parent, L"Players Online:", 20, y+2, 110, 22);
+    g_hwndPlayerCount = MakeLabel(parent, L"0", 136, y, 50, 24);
+    y += 28;
+    MakeButton(parent, L"Start Server",   IDC_BTN_START,          20,  y, 106, 28);
+    MakeButton(parent, L"Stop Server",    IDC_BTN_STOP,           134, y, 106, 28);
+    MakeButton(parent, L"Restart Server", IDC_BTN_RESTART_SERVER, 248, y, 120, 28);
+    y += 34;
+    // Era
+    MakeLabel(parent, L"Era:", 20, y+4, 26, 20);
+    g_hwndGameEraCur = MakeLabel(parent, L"(?)", 50, y+4, 60, 20);
+    g_hwndGameEraCbo = MakeCombo(parent, IDC_GAME_ERA_COMBO, 114, y, 150, 200);
+    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Classic");
+    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Kunark");
+    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Velious");
+    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Luclin");
+    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Planes of Power");
+    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"All Expansions");
+    MakeButton(parent, L"Set Era", IDC_BTN_SET_ERA, 272, y, 72, 26);
+    MakeLabel(parent, L"(restart required)", 352, y+4, 130, 20);
+    y += 30;
+    // MOTD
+    MakeLabel(parent, L"MOTD:", 20, y+4, 42, 20);
+    g_hwndMotdEdit = MakeEdit(parent, IDC_STATUS_MOTD_EDIT, 68, y, 740, 24);
+    MakeButton(parent, L"Set MOTD", IDC_BTN_SET_MOTD, 816, y, 76, 26);
+    y += 28;
+    // Announce
+    MakeLabel(parent, L"Announce:", 20, y+4, 68, 20);
+    g_hwndAnnounceEdit = MakeEdit(parent, IDC_ANNOUNCE_EDIT, 94, y, 714, 24);
+    MakeButton(parent, L"Send", IDC_BTN_SEND_ANNOUNCE, 816, y, 76, 26);
+    y += 30;
+    // Services
+    MakeLabel(parent, L"Services:", 20, y, 60, 18);
+    y += 18;
     g_hwndProcList = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
         WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_READONLY | WS_VSCROLL,
-        150, 84, 420, 150, parent,
+        20, y, 500, 150, parent,
         (HMENU)(UINT_PTR)IDC_STATUS_PROCESSES, g_hInst, nullptr);
     if (g_hwndProcList && g_hFontMono)
         SendMessage(g_hwndProcList, WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
+    y += 156;
+    // Boss Section
+    MakeLabel(parent, L"Boss:", 20, y+4, 36, 20);
+    HWND cboBoss = MakeCombo(parent, IDC_SPAWN_BOSS_COMBO, 60, y, 210, 400);
+    for (int i = 0; i < BOSS_TABLE_COUNT; ++i)
+        SendMessageW(cboBoss, CB_ADDSTRING, 0, (LPARAM)BOSS_TABLE[i].name);
+    MakeButton(parent, L"Check",   IDC_BTN_CHECK_BOSS,       280, y, 56, 26);
+    MakeButton(parent, L"Spawn",   IDC_BTN_SPAWN_BOSS,       342, y, 56, 26);
+    MakeButton(parent, L"Despawn", IDC_BTN_DESPAWN_BOSS,     404, y, 66, 26);
+    MakeButton(parent, L"List Active Bosses", IDC_BTN_LIST_ACTIVE_BOSS, 476, y, 140, 26);
+    y += 30;
+    g_hwndStatusResult = MakeResultBox(parent, IDC_STATUS_RESULT, 20, y, 940, 130);
+}
 
-    MakeButton(parent, L"Start Server", IDC_BTN_START, 20, 256, 120, 34);
-    MakeButton(parent, L"Stop Server",  IDC_BTN_STOP,  160, 256, 120, 34);
-
-    MakeLabel(parent,
-        L"The server continues running in Docker whether this window is open or closed.",
-        20, 306, 580, 20);
+static void RefreshEraZone() {
+    // Refresh era/zone "Current:" labels on Status tab — only when server is up
+    if (!IsContainerRunning()) {
+        if (g_hwndGameEraCur)  SetWindowTextW(g_hwndGameEraCur,  L"(server off)");
+        if (g_hwndGameZoneCur) SetWindowTextW(g_hwndGameZoneCur, L"(server off)");
+        return;
+    }
+    std::wstring eraResult = RunQuery(
+        L"SELECT rule_value FROM rule_values WHERE rule_name='World:CurrentExpansion'");
+    if (eraResult != L"(no results)") {
+        std::wstring d = L"(unknown)";
+        if      (eraResult.find(L"-1") != std::wstring::npos) d = L"All";
+        else if (eraResult.find(L"4")  != std::wstring::npos) d = L"PoP";
+        else if (eraResult.find(L"3")  != std::wstring::npos) d = L"Luclin";
+        else if (eraResult.find(L"2")  != std::wstring::npos) d = L"Velious";
+        else if (eraResult.find(L"1")  != std::wstring::npos) d = L"Kunark";
+        else if (eraResult.find(L"0")  != std::wstring::npos) d = L"Classic";
+        if (g_hwndGameEraCur) SetWindowTextW(g_hwndGameEraCur, d.c_str());
+        // Select matching item in era dropdown
+        int eraIdx = -1;
+        if (d == L"Classic") eraIdx = 0;
+        else if (d == L"Kunark") eraIdx = 1;
+        else if (d == L"Velious") eraIdx = 2;
+        else if (d == L"Luclin") eraIdx = 3;
+        else if (d == L"PoP") eraIdx = 4;
+        else if (d == L"All") eraIdx = 5;
+        if (eraIdx >= 0 && g_hwndGameEraCbo)
+            SendMessage(g_hwndGameEraCbo, CB_SETCURSEL, eraIdx, 0);
+    }
+    std::wstring zoneResult = RunQuery(L"SELECT dynamics FROM launcher LIMIT 1");
+    if (zoneResult != L"(no results)") {
+        std::wstring num; bool nl = false;
+        for (auto c : zoneResult) {
+            if (c == L'\n' || c == L'\r') { nl = true; continue; }
+            if (nl && iswdigit(c)) num += c;
+            else if (nl && !num.empty()) break;
+        }
+        if (!num.empty() && g_hwndGameZoneCur)
+            SetWindowTextW(g_hwndGameZoneCur, num.c_str());
+    }
 }
 
 static void RefreshStatusTab() {
@@ -542,21 +1076,67 @@ static void RefreshStatusTab() {
         std::wstring procs = GetProcessStatus();
         SetWindowTextW(g_hwndProcList, procs.c_str());
         SetStatus(L"Server is running");
+        // Active player count (characters logged in within last 5 minutes)
+        std::wstring cntResult = RunQuery(
+            L"SELECT COUNT(*) FROM character_data "
+            L"WHERE last_login > UNIX_TIMESTAMP(NOW() - INTERVAL 5 MINUTE)");
+        std::wstring cnt;
+        for (auto c : cntResult) { if (iswdigit(c)) cnt += c; }
+        if (g_hwndPlayerCount)
+            SetWindowTextW(g_hwndPlayerCount, cnt.empty() ? L"0" : cnt.c_str());
+        // Load current MOTD into the edit field (only if user hasn't typed in it)
+        if (g_hwndMotdEdit && GetWindowTextLengthW(g_hwndMotdEdit) == 0) {
+            std::wstring motdResult = RunQuery(
+                L"SELECT rule_value FROM rule_values WHERE rule_name='World:MOTD'");
+            // Strip header rows from raw query result
+            std::wstring motdVal;
+            bool pastHeader = false;
+            for (auto c : motdResult) {
+                if (c == L'\n') { pastHeader = true; continue; }
+                if (c == L'\r') continue;
+                if (pastHeader) motdVal += c;
+            }
+            while (!motdVal.empty() && (motdVal.back() == L' ' || motdVal.back() == L'\n'))
+                motdVal.pop_back();
+            if (!motdVal.empty() && motdVal != L"(no results)")
+                SetWindowTextW(g_hwndMotdEdit, motdVal.c_str());
+        }
+        // Zone list refreshes only on explicit Refresh click, not every poll
     } else {
         SetWindowTextW(g_hwndStateLabel, L"STOPPED");
         SetWindowTextW(g_hwndUptimeLabel, L"");
         SetWindowTextW(g_hwndProcList, L"(server is not running)");
+        if (g_hwndPlayerCount) SetWindowTextW(g_hwndPlayerCount, L"\x2014");
+        if (g_hwndZoneList) SendMessage(g_hwndZoneList, LB_RESETCONTENT, 0, 0);
         SetStatus(L"Server is stopped");
     }
+    RefreshEraZone();
+}
+
+static void DoSetMOTD() {
+    if (!CheckServerRunning(L"Set MOTD")) return;
+    wchar_t motd[512] = {};
+    if (g_hwndMotdEdit) GetWindowTextW(g_hwndMotdEdit, motd, 512);
+    // Escape single quotes for SQL safety
+    std::wstring safe;
+    for (wchar_t c : std::wstring(motd)) {
+        if (c == L'\'') safe += L"''";
+        else safe += c;
+    }
+    RunQuery(L"UPDATE rule_values SET rule_value='" + safe +
+             L"' WHERE rule_name='World:MOTD'");
+    if (motd[0])
+        SetStatus(L"MOTD set \x2014 players will see it on next zone-in.");
+    else
+        SetStatus(L"MOTD cleared.");
 }
 
 // ============================================================
-// TAB 2 — ADMIN TOOLS PANEL
+// TAB 4 — ADMIN TOOLS PANEL
 // ============================================================
 
 static HWND g_hwndAdmAccount  = nullptr;
 static HWND g_hwndAdmPassword = nullptr;
-static HWND g_hwndAdmResult   = nullptr;
 
 static void CreateAdminPanel(HWND parent) {
     int y = 12;
@@ -566,30 +1146,52 @@ static void CreateAdminPanel(HWND parent) {
 
     MakeLabel(parent, L"Account:", 20, y+4, 70, 20);
     g_hwndAdmAccount = MakeEdit(parent, IDC_ADM_ACCOUNT, 96, y, 190, 24);
-    MakeButton(parent, L"Make GM",        IDC_BTN_MAKE_GM,       296, y, 90, 26);
-    MakeButton(parent, L"Remove GM",      IDC_BTN_REMOVE_GM,     396, y, 95, 26);
+    MakeButton(parent, L"Make GM",    IDC_BTN_MAKE_GM,    296, y, 85, 26);
+    MakeButton(parent, L"Remove GM",  IDC_BTN_REMOVE_GM,  390, y, 90, 26);
     y += 34;
 
-    MakeButton(parent, L"List Accounts",  IDC_BTN_LIST_ACCOUNTS, 96,  y, 120, 26);
-    MakeButton(parent, L"Reset Password", IDC_BTN_RESET_PASSWORD,226, y, 130, 26);
+    MakeButton(parent, L"List Accounts",  IDC_BTN_LIST_ACCOUNTS,   96, y, 120, 26);
+    MakeButton(parent, L"Reset Password", IDC_BTN_RESET_PASSWORD,  226, y, 125, 26);
+    MakeButton(parent, L"Suspend",        IDC_BTN_SUSPEND_ACCT,    360, y,  80, 26);
+    MakeButton(parent, L"Unsuspend",      IDC_BTN_UNSUSPEND_ACCT,  450, y,  85, 26);
+    MakeButton(parent, L"Ban",            IDC_BTN_BAN_ACCT,        544, y,  50, 26);
+    MakeButton(parent, L"Unban",          IDC_BTN_UNBAN_ACCT,      604, y,  55, 26);
     y += 34;
 
     MakeLabel(parent, L"New Password:", 20, y+4, 100, 20);
     g_hwndAdmPassword = MakeEdit(parent, IDC_ADM_PASSWORD, 128, y, 200, 24, ES_PASSWORD);
     MakeLabel(parent, L"(for Reset Password above)", 338, y+4, 200, 20);
-    y += 40;
+    y += 44;
 
-    // Separator
-    MakeLabel(parent, L"Player & Session Info:", 20, y, 180, 20);
+    // --- Server Overview ---
+    MakeLabel(parent, L"Server Overview:", 20, y, 140, 20);
     y += 26;
 
-    MakeButton(parent, L"Who Is Online",    IDC_BTN_WHO_ONLINE,    20, y, 120, 26);
-    MakeButton(parent, L"Recent Logins",    IDC_BTN_RECENT_LOGINS, 150, y, 120, 26);
-    MakeButton(parent, L"Last Known IP",    IDC_BTN_IP_HISTORY,    280, y, 130, 26);
-    MakeLabel(parent, L"(uses account name above)", 420, y+5, 200, 20);
-    y += 40;
+    MakeButton(parent, L"Server Stats", IDC_BTN_SERVER_STATS, 20, y, 120, 26);
+    MakeButton(parent, L"View Bans",    IDC_BTN_VIEW_BANS,   150, y, 100, 26);
+    MakeLabel(parent, L"(accounts, characters, online, corpses; bans use Account field)", 260, y+4, 430, 20);
+    y += 44;
 
-    g_hwndAdmResult = MakeResultBox(parent, IDC_ADM_RESULT, 20, y, 730, 220);
+    // --- Danger Zone: Delete Character ---
+    MakeLabel(parent, L"Delete Character (permanent \x2014 two confirmations required):", 20, y, 430, 20);
+    y += 26;
+
+    MakeLabel(parent, L"Character:", 20, y+4, 70, 20);
+    g_hwndAdmDelChar = MakeEdit(parent, IDC_ADM_DEL_CHAR, 96, y, 190, 24);
+    MakeButton(parent, L"Delete Character...", IDC_BTN_DELETE_CHAR, 296, y, 150, 26);
+    y += 36;
+
+    // --- In-Game GM & GodMode Toggles ---
+    MakeLabel(parent, L"In-Game Toggles (account must be GM status 255):", 20, y, 380, 20);
+    y += 22;
+    MakeLabel(parent, L"Character:", 20, y+4, 70, 20);
+    g_hwndAdmGMChar = MakeEdit(parent, IDC_ADM_GM_CHAR, 96, y, 160, 24);
+    MakeButton(parent, L"Toggle GM Flag",   IDC_BTN_TOGGLE_GM,      268, y, 120, 26);
+    MakeButton(parent, L"Toggle God Mode",  IDC_BTN_TOGGLE_GODMODE, 398, y, 130, 26);
+    MakeLabel(parent, L"(character must be offline)", 540, y+4, 200, 20);
+    y += 34;
+
+    g_hwndAdmResult = MakeResultBox(parent, IDC_ADM_RESULT, 20, y, 880, 200);
 }
 
 // ============================================================
@@ -620,9 +1222,6 @@ static bool CheckServerRunning(const wchar_t* title) {
     return true;
 }
 
-// Forward declarations for functions defined later
-static bool GetNoBackupOnStop();
-
 // Check if a character's account is currently active (logged in)
 // Returns: 1 = online, 0 = offline, -1 = character not found or error
 static int IsCharacterOnline(const wchar_t* charName) {
@@ -630,7 +1229,7 @@ static int IsCharacterOnline(const wchar_t* charName) {
         L"SELECT a.active FROM account a "
         L"JOIN character_data cd ON cd.account_id=a.id "
         L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(charName) + L"')";
-    std::wstring result = RunQuery(sql);
+    std::wstring result = RunQueryTable(sql);
     if (result == L"(no results)" || result.find(L"ERROR") != std::wstring::npos)
         return -1;
     if (result.find(L"1") != std::wstring::npos)
@@ -696,7 +1295,7 @@ static void DoListAccounts() {
         L"FROM account a "
         L"LEFT JOIN tblLoginServerAccounts lsa ON lsa.AccountName=a.name "
         L"ORDER BY lsa.LastLoginDate DESC";
-    std::wstring result = RunQuery(sql);
+    std::wstring result = RunQueryTable(sql);
     SetAdmResult(L"Accounts (status 255=GM, 0=player):\r\n\r\n" + result);
 }
 
@@ -745,8 +1344,8 @@ static void DoWhoIsOnline() {
         L"LEFT JOIN zone z ON z.zoneidnumber=cd.zone_id "
         L"WHERE cd.last_login > UNIX_TIMESTAMP(NOW() - INTERVAL 1 DAY) "
         L"ORDER BY cd.last_login DESC";
-    std::wstring result = RunQuery(sql);
-    SetAdmResult(L"Characters active in last 24 hours:\r\n\r\n" + result);
+    std::wstring result = RunQueryTable(sql);
+    SetPlrResult(L"Characters active in last 24 hours:\r\n\r\n" + result);
 }
 
 static void DoRecentLogins() {
@@ -756,13 +1355,18 @@ static void DoRecentLogins() {
         L"FROM account a "
         L"LEFT JOIN tblLoginServerAccounts lsa ON lsa.AccountName=a.name "
         L"ORDER BY lsa.LastLoginDate DESC LIMIT 20";
-    std::wstring result = RunQuery(sql);
-    SetAdmResult(L"Recent logins (last 20):\r\n\r\n" + result);
+    std::wstring result = RunQueryTable(sql);
+    SetPlrResult(L"Recent logins (last 20):\r\n\r\n" + result);
 }
 
 static void DoIPHistory() {
     wchar_t acct[128] = {};
-    if (!AdmGetAccount(acct, 128)) return;
+    GetWindowTextW(g_hwndPlrAccount, acct, 128);
+    if (!acct[0]) {
+        MessageBoxW(g_hwndMain, L"Enter an account name in the Player Tools Account field first.",
+            L"Account Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
     if (!CheckServerRunning(L"Last Known IP")) return;
 
     std::wstring sql =
@@ -770,20 +1374,176 @@ static void DoIPHistory() {
         L"FROM account a "
         L"LEFT JOIN tblLoginServerAccounts lsa ON lsa.AccountName=a.name "
         L"WHERE LOWER(a.name)=LOWER('" + std::wstring(acct) + L"')";
-    std::wstring result = RunQuery(sql);
-    SetAdmResult(std::wstring(L"Last known IP for: ") + acct +
+    std::wstring result = RunQueryTable(sql);
+    SetPlrResult(std::wstring(L"Last known IP for: ") + acct +
         L"\r\n(only the most recent IP is stored per account)\r\n\r\n" + result);
 }
 
-// ============================================================
-// TAB 3 — PLAYER TOOLS PANEL
-// ============================================================
+static void DoServerStats() {
+    if (!CheckServerRunning(L"Server Stats")) return;
+    std::wstring sql =
+        L"SELECT "
+        L"(SELECT COUNT(*) FROM account) AS total_accounts, "
+        L"(SELECT COUNT(*) FROM character_data) AS total_characters, "
+        L"(SELECT COUNT(*) FROM character_data WHERE last_login > UNIX_TIMESTAMP(NOW() - INTERVAL 1 DAY)) AS active_24h, "
+        L"(SELECT COUNT(*) FROM character_corpses WHERE is_rezzed=0 AND is_buried=0) AS live_corpses";
+    std::wstring result = RunQueryTable(sql);
+    SetAdmResult(L"Server Statistics:\r\n\r\n" + result +
+        L"\r\n\r\nactive_24h = characters logged in within the last 24 hours\r\n"
+        L"live_corpses = unrezzed, unburied corpses currently in the world");
+}
 
-static HWND g_hwndPlrAccount  = nullptr;
-static HWND g_hwndPlrCharName = nullptr;
-static HWND g_hwndPlrZone     = nullptr;
-static HWND g_hwndPlrAmount   = nullptr;
-static HWND g_hwndPlrResult   = nullptr;
+static void DoSuspendAccount() {
+    wchar_t acct[128] = {};
+    if (!AdmGetAccount(acct, 128)) return;
+    if (!CheckServerRunning(L"Suspend Account")) return;
+    int r = MessageBoxW(g_hwndMain,
+        (std::wstring(L"Suspend account '") + acct + L"'?\r\n\r\n"
+         L"This sets the account status to -1, blocking all logins.\r\n"
+         L"Use Unsuspend to restore access.\r\n\r\nContinue?").c_str(),
+        L"Confirm Suspend", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+    if (r != IDYES) return;
+    RunQuery(L"UPDATE account SET status=-1 WHERE LOWER(name)=LOWER('" + std::wstring(acct) + L"')");
+    SetAdmResult(std::wstring(L"Account '") + acct + L"' suspended (status=-1).\r\n\r\n"
+        L"The player will be unable to log in.\r\n"
+        L"Use Unsuspend to restore access.\r\n"
+        L"If no rows changed, the account name may not exist.");
+}
+
+static void DoUnsuspendAccount() {
+    wchar_t acct[128] = {};
+    if (!AdmGetAccount(acct, 128)) return;
+    if (!CheckServerRunning(L"Unsuspend Account")) return;
+    RunQuery(L"UPDATE account SET status=0 WHERE LOWER(name)=LOWER('" + std::wstring(acct) +
+             L"') AND status=-1");
+    SetAdmResult(std::wstring(L"Account '") + acct + L"' unsuspended (status restored to 0).\r\n\r\n"
+        L"The player can now log in again.\r\n"
+        L"If no rows changed, the account was not suspended or the name is incorrect.");
+}
+
+static void DoDeleteCharacter() {
+    if (!CheckServerRunning(L"Delete Character")) return;
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndAdmDelChar, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name in the Delete Character field.",
+            L"Character Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+
+    std::wstring checkSql =
+        L"SELECT cd.name, cd.level, a.name AS account "
+        L"FROM character_data cd JOIN account a ON cd.account_id=a.id "
+        L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"')";
+    std::wstring info = RunQueryTable(checkSql);
+    if (info == L"(no results)") {
+        SetAdmResult(std::wstring(L"Character '") + chr + L"' not found.");
+        return;
+    }
+
+    int online = IsCharacterOnline(chr);
+    if (online == 1) {
+        MessageBoxW(g_hwndMain,
+            L"That character is currently online.\r\n\r\nLog them out before deleting.",
+            L"Character Online", MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    // First confirmation — show what will be destroyed
+    int r = MessageBoxW(g_hwndMain,
+        (std::wstring(L"PERMANENTLY DELETE character '") + chr + L"'?\r\n\r\n" +
+         info + L"\r\n\r\n"
+         L"The following will be erased with no backup and no recovery:\r\n"
+         L"  \x2022 All inventory and equipped items\r\n"
+         L"  \x2022 All experience, levels, and AA points\r\n"
+         L"  \x2022 All skills, spells, and faction values\r\n"
+         L"  \x2022 All corpses and their loot\r\n"
+         L"  \x2022 All buffs and pet data\r\n\r\n"
+         L"THIS ACTION CANNOT BE REVERSED.\r\n\r\nContinue to second confirmation?").c_str(),
+        L"Delete Character \x2014 Step 1 of 2", MB_YESNO | MB_ICONERROR | MB_DEFBUTTON2);
+    if (r != IDYES) return;
+
+    // Second confirmation — final permanent warning
+    r = MessageBoxW(g_hwndMain,
+        (std::wstring(L"PERMANENT DATA LOSS \x2014 FINAL CONFIRMATION\r\n\r\n") +
+         L"You are about to permanently destroy character '" + chr + L"'.\r\n\r\n"
+         L"Every item, every level, every AA, every skill \x2014\r\n"
+         L"all of it will be gone forever.\r\n\r\n"
+         L"There is no undo. There is no backup. There is no recovery.\r\n\r\n"
+         L"Click YES only if you are absolutely certain.").c_str(),
+        L"Delete Character \x2014 Step 2 of 2 (PERMANENT)", MB_YESNO | MB_ICONERROR | MB_DEFBUTTON2);
+    if (r != IDYES) return;
+
+    std::wstring idSql = L"SELECT id FROM character_data WHERE LOWER(name)=LOWER('" +
+        std::wstring(chr) + L"')";
+    std::wstring idResult = RunQuery(idSql);
+    std::wstring charId;
+    bool foundNl = false;
+    for (auto c : idResult) {
+        if (c == L'\n' || c == L'\r') { foundNl = true; continue; }
+        if (foundNl && iswdigit(c)) charId += c;
+        else if (foundNl && !charId.empty()) break;
+    }
+    if (charId.empty()) { SetAdmResult(L"Could not resolve character ID."); return; }
+
+    const wchar_t* related[] = {
+        L"character_inventory", L"character_currency", L"character_skills",
+        L"character_spells", L"character_bind", L"character_corpses",
+        L"character_buffs", L"character_faction_values", L"character_memmed_spells",
+        L"character_pet_buffs", L"character_pet_inventory", L"character_alternate_abilities",
+        nullptr
+    };
+    for (int i = 0; related[i]; ++i)
+        RunQuery(std::wstring(L"DELETE FROM ") + related[i] + L" WHERE id=" + charId);
+    RunQuery(L"DELETE FROM character_corpses WHERE charname='" + std::wstring(chr) + L"'");
+    RunQuery(L"DELETE FROM character_data WHERE id=" + charId);
+
+    SetAdmResult(std::wstring(L"Character '") + chr + L"' permanently deleted.\r\n\r\n"
+        L"Inventory, currency, skills, spells, AAs, corpses, and all associated data removed.");
+}
+
+static void DoBanAccount() {
+    wchar_t acct[128] = {};
+    if (!AdmGetAccount(acct, 128)) return;
+    if (!CheckServerRunning(L"Ban Account")) return;
+    int r = MessageBoxW(g_hwndMain,
+        (std::wstring(L"Ban account '") + acct + L"'?\r\n\r\n"
+         L"Status will be set to -2, blocking all logins permanently.\r\n"
+         L"Use Unban to restore access.\r\n\r\nContinue?").c_str(),
+        L"Confirm Ban", MB_YESNO | MB_ICONERROR | MB_DEFBUTTON2);
+    if (r != IDYES) return;
+    RunQuery(L"UPDATE account SET status=-2 WHERE LOWER(name)=LOWER('" + std::wstring(acct) + L"')");
+    SetAdmResult(std::wstring(L"Account '") + acct + L"' banned (status=-2).\r\n\r\n"
+        L"The player cannot log in. Use Unban to restore.\r\n"
+        L"If no rows changed, the account name does not exist.");
+}
+
+static void DoUnbanAccount() {
+    wchar_t acct[128] = {};
+    if (!AdmGetAccount(acct, 128)) return;
+    if (!CheckServerRunning(L"Unban Account")) return;
+    RunQuery(L"UPDATE account SET status=0 WHERE LOWER(name)=LOWER('" + std::wstring(acct) +
+             L"') AND status=-2");
+    SetAdmResult(std::wstring(L"Account '") + acct + L"' unbanned (status restored to 0).\r\n\r\n"
+        L"The player can log in again.\r\n"
+        L"If no rows changed, the account was not banned or the name is incorrect.");
+}
+
+static void DoViewBans() {
+    if (!CheckServerRunning(L"View Bans")) return;
+    std::wstring sql =
+        L"SELECT a.name AS account, a.status, lsa.LastLoginDate, lsa.LastIPAddress "
+        L"FROM account a "
+        L"LEFT JOIN tblLoginServerAccounts lsa ON lsa.AccountName=a.name "
+        L"WHERE a.status=-2 ORDER BY a.name";
+    std::wstring result = RunQueryTable(sql);
+    SetAdmResult(L"Banned accounts (status=-2):\r\n\r\n" + result +
+        L"\r\n\r\nTo unban, enter the account name above and click Unban.");
+}
+
+// ============================================================
+// TAB 2 — PLAYER TOOLS PANEL
+// ============================================================
 
 static void CreatePlayerPanel(HWND parent) {
     int y = 12;
@@ -812,23 +1572,55 @@ static void CreatePlayerPanel(HWND parent) {
     g_hwndPlrZone = MakeEdit(parent, IDC_PLR_ZONE, 224, y, 140, 24);
     MakeButton(parent, L"Find Zone",          IDC_BTN_FIND_ZONE,    374, y, 80,  26);
     MakeButton(parent, L"Move to Zone",       IDC_BTN_MOVE_TO_ZONE, 464, y, 110, 26);
-    y += 34;
-
-    MakeLabel(parent, L"Platinum:", 20, y+4, 70, 20);
-    g_hwndPlrAmount = MakeEdit(parent, IDC_PLR_AMOUNT, 96, y, 80, 24);
-    MakeButton(parent, L"Give Platinum",      IDC_BTN_GIVE_PLAT,    186, y, 120, 26);
-    MakeLabel(parent, L"(add to character's carried platinum)", 316, y+4, 300, 20);
     y += 40;
 
     MakeLabel(parent, L"Corpses:", 20, y, 80, 20);
     y += 26;
-
     MakeButton(parent, L"List All Corpses",     IDC_BTN_LIST_CORPSES,    20,  y, 140, 26);
     MakeButton(parent, L"Corpses by Character", IDC_BTN_CORPSES_BY_CHAR, 170, y, 160, 26);
     MakeLabel(parent, L"(uses character name above)", 340, y+5, 220, 20);
     y += 40;
 
-    g_hwndPlrResult = MakeResultBox(parent, IDC_PLR_RESULT, 20, y, 730, 190);
+    MakeLabel(parent, L"Search Characters:", 20, y, 140, 20);
+    y += 26;
+    MakeLabel(parent, L"Level:", 20, y+4, 42, 20);
+    g_hwndPlrSearchMin = MakeEdit(parent, IDC_PLR_SEARCH_MIN, 66, y, 44, 24);
+    MakeLabel(parent, L"to", 116, y+4, 20, 20);
+    g_hwndPlrSearchMax = MakeEdit(parent, IDC_PLR_SEARCH_MAX, 140, y, 44, 24);
+    MakeLabel(parent, L"Class:", 196, y+4, 42, 20);
+    g_hwndPlrSearchClass = MakeCombo(parent, IDC_PLR_SEARCH_CLASS, 242, y, 140, 400);
+    SendMessageW(g_hwndPlrSearchClass, CB_ADDSTRING, 0, (LPARAM)L"All Classes");
+    for (int i = 0; i < 15; ++i)
+        SendMessageW(g_hwndPlrSearchClass, CB_ADDSTRING, 0, (LPARAM)CLASS_NAMES[i]);
+    SendMessage(g_hwndPlrSearchClass, CB_SETCURSEL, 0, 0);
+    MakeButton(parent, L"Search", IDC_BTN_PLR_SEARCH, 392, y, 80, 26);
+    MakeLabel(parent, L"(leave level blank for any)", 484, y+4, 200, 20);
+    y += 40;
+
+    MakeLabel(parent, L"Player Activity:", 20, y, 140, 20);
+    y += 26;
+    MakeButton(parent, L"Who Is Online",   IDC_BTN_WHO_ONLINE,    20,  y, 120, 26);
+    MakeButton(parent, L"Recent Logins",   IDC_BTN_RECENT_LOGINS, 150, y, 120, 26);
+    MakeButton(parent, L"Last Known IP",   IDC_BTN_IP_HISTORY,    280, y, 120, 26);
+    MakeLabel(parent, L"(uses Account above)", 410, y+5, 160, 20);
+    y += 34;
+
+    // --- Faction Editor ---
+    MakeLabel(parent, L"Factions:", 20, y, 60, 20);
+    MakeLabel(parent, L"(uses Character above)", 86, y, 160, 20);
+    MakeButton(parent, L"Load Factions", IDC_BTN_LOAD_FACTIONS, 260, y, 110, 24);
+    MakeLabel(parent, L"Value:", 384, y+2, 40, 20);
+    g_hwndFactionValue = MakeEdit(parent, IDC_FACTION_VALUE, 428, y, 56, 24);
+    MakeButton(parent, L"Set", IDC_BTN_SET_FACTION, 494, y, 40, 24);
+    MakeButton(parent, L"Ally", IDC_BTN_FACTION_ALLY, 544, y, 52, 24);
+    MakeButton(parent, L"Warmly", IDC_BTN_FACTION_WARMLY, 602, y, 60, 24);
+    MakeButton(parent, L"Indiff", IDC_BTN_FACTION_INDIFF, 668, y, 52, 24);
+    MakeButton(parent, L"KOS", IDC_BTN_FACTION_KOS, 726, y, 42, 24);
+    y += 26;
+    g_hwndFactionList = MakeListBox(parent, IDC_FACTION_LIST, 20, y, 750, 56);
+    y += 62;
+
+    g_hwndPlrResult = MakeResultBox(parent, IDC_PLR_RESULT, 20, y, 940, 180);
 }
 
 // ============================================================
@@ -874,7 +1666,7 @@ static void DoPlrListChars() {
         L"LEFT JOIN zone z ON z.zoneidnumber=cd.zone_id "
         L"WHERE LOWER(a.name)=LOWER('" + std::wstring(acct) + L"') "
         L"ORDER BY cd.name";
-    std::wstring result = RunQuery(sql);
+    std::wstring result = RunQueryTable(sql);
     SetPlrResult(std::wstring(L"Characters on account '") + acct + L"':\r\n\r\n" + result);
 }
 
@@ -899,7 +1691,7 @@ static void DoPlrCharInfo() {
         L"FROM character_data cd "
         L"LEFT JOIN zone z ON z.zoneidnumber=cd.zone_id "
         L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"')";
-    std::wstring result = RunQuery(sql);
+    std::wstring result = RunQueryTable(sql);
     SetPlrResult(std::wstring(L"Character info for '") + chr + L"':\r\n\r\n" + result);
 }
 
@@ -915,7 +1707,7 @@ static void DoShowInventory() {
         L"JOIN character_data cd ON cd.id=ci.id "
         L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"') "
         L"ORDER BY ci.slotid";
-    std::wstring result = RunQuery(sql);
+    std::wstring result = RunQueryTable(sql);
     SetPlrResult(std::wstring(L"Inventory for '") + chr +
         L"' (slots 0-21 are equipped):\r\n\r\n" + result);
 }
@@ -932,7 +1724,7 @@ static void DoShowCurrency() {
         L"FROM character_currency cc "
         L"JOIN character_data cd ON cd.id=cc.id "
         L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"')";
-    std::wstring result = RunQuery(sql);
+    std::wstring result = RunQueryTable(sql);
     SetPlrResult(std::wstring(L"Currency for '") + chr + L"':\r\n\r\n" + result);
 }
 
@@ -952,7 +1744,7 @@ static void DoShowAcctForChar() {
         L"FROM character_data cd "
         L"JOIN account a ON cd.account_id=a.id "
         L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"')";
-    std::wstring result = RunQuery(sql);
+    std::wstring result = RunQueryTable(sql);
     SetPlrResult(std::wstring(L"Account for character '") + chr + L"':\r\n\r\n" + result);
 }
 
@@ -1037,7 +1829,7 @@ static void DoFindZone() {
         L"WHERE LOWER(short_name) LIKE LOWER('%" + std::wstring(zone) + L"%') "
         L"OR LOWER(long_name) LIKE LOWER('%" + std::wstring(zone) + L"%') "
         L"ORDER BY short_name LIMIT 20";
-    std::wstring result = RunQuery(sql);
+    std::wstring result = RunQueryTable(sql);
     SetPlrResult(L"Matching zones (enter exact short_name above to move):\r\n\r\n" + result);
 }
 
@@ -1161,32 +1953,72 @@ static void DoGivePlatinum() {
 static void DoListCorpses() {
     if (!CheckServerRunning(L"List Corpses")) return;
     std::wstring sql =
-        L"SELECT cc.charname, z.short_name AS zone, cc.time_of_death, cc.is_rezzed, cc.is_buried "
+        L"SELECT cc.charname, z.short_name AS zone, "
+        L"FROM_UNIXTIME(cc.time_of_death) AS died, cc.is_rezzed, cc.is_buried "
         L"FROM character_corpses cc "
         L"LEFT JOIN zone z ON z.zoneidnumber=cc.zone_id "
-        L"ORDER BY cc.time_of_death DESC";
-    std::wstring result = RunQuery(sql);
-    SetPlrResult(L"All corpses:\r\n\r\n" + result);
+        L"ORDER BY cc.time_of_death DESC LIMIT 100";
+    SetPlrResult(L"All corpses (newest first):\r\n\r\n" + RunQueryTable(sql));
 }
 
 static void DoCorpsesByChar() {
     wchar_t chr[128] = {};
     if (!PlrGetChar(chr, 128)) return;
     if (!CheckServerRunning(L"Corpses by Character")) return;
-
     std::wstring sql =
-        L"SELECT cc.charname, z.short_name AS zone, cc.time_of_death, cc.is_rezzed, cc.is_buried, "
+        L"SELECT cc.charname, z.short_name AS zone, "
+        L"FROM_UNIXTIME(cc.time_of_death) AS died, "
+        L"cc.is_rezzed, cc.is_buried, "
         L"cc.platinum, cc.gold, cc.silver, cc.copper "
         L"FROM character_corpses cc "
         L"LEFT JOIN zone z ON z.zoneidnumber=cc.zone_id "
         L"WHERE LOWER(cc.charname)=LOWER('" + std::wstring(chr) + L"') "
         L"ORDER BY cc.time_of_death DESC";
-    std::wstring result = RunQuery(sql);
-    SetPlrResult(std::wstring(L"Corpses for '") + chr + L"':\r\n\r\n" + result);
+    SetPlrResult(std::wstring(L"Corpses for '") + chr + L"':\r\n\r\n" + RunQueryTable(sql));
+}
+
+static void DoSearchCharacters() {
+    if (!CheckServerRunning(L"Search Characters")) return;
+    wchar_t minBuf[16] = {}, maxBuf[16] = {};
+    if (g_hwndPlrSearchMin) GetWindowTextW(g_hwndPlrSearchMin, minBuf, 16);
+    if (g_hwndPlrSearchMax) GetWindowTextW(g_hwndPlrSearchMax, maxBuf, 16);
+    int classSel = g_hwndPlrSearchClass ?
+        (int)SendMessage(g_hwndPlrSearchClass, CB_GETCURSEL, 0, 0) : 0;
+
+    std::wstring where = L"1=1";
+    if (minBuf[0]) {
+        for (wchar_t* p = minBuf; *p; p++) {
+            if (!iswdigit(*p)) { SetPlrResult(L"Level min must be a number."); return; }
+        }
+        where += L" AND cd.level >= " + std::wstring(minBuf);
+    }
+    if (maxBuf[0]) {
+        for (wchar_t* p = maxBuf; *p; p++) {
+            if (!iswdigit(*p)) { SetPlrResult(L"Level max must be a number."); return; }
+        }
+        where += L" AND cd.level <= " + std::wstring(maxBuf);
+    }
+    if (classSel > 0) // 0 = "All Classes"
+        where += L" AND cd.class = " + std::to_wstring(classSel);
+
+    std::wstring sql =
+        L"SELECT cd.name, cd.level, "
+        L"CASE cd.class WHEN 1 THEN 'WAR' WHEN 2 THEN 'CLR' WHEN 3 THEN 'PAL' "
+        L"WHEN 4 THEN 'RNG' WHEN 5 THEN 'SHD' WHEN 6 THEN 'DRU' "
+        L"WHEN 7 THEN 'MNK' WHEN 8 THEN 'BRD' WHEN 9 THEN 'ROG' "
+        L"WHEN 10 THEN 'SHM' WHEN 11 THEN 'NEC' WHEN 12 THEN 'WIZ' "
+        L"WHEN 13 THEN 'MAG' WHEN 14 THEN 'ENC' WHEN 15 THEN 'BST' "
+        L"ELSE CAST(cd.class AS CHAR) END AS class, "
+        L"z.short_name AS zone, a.name AS account "
+        L"FROM character_data cd "
+        L"JOIN account a ON cd.account_id=a.id "
+        L"LEFT JOIN zone z ON z.zoneidnumber=cd.zone_id "
+        L"WHERE " + where + L" ORDER BY cd.level DESC LIMIT 100";
+    SetPlrResult(L"Search results (max 100):\r\n\r\n" + RunQueryTable(sql));
 }
 
 // ============================================================
-// TAB 4 — BACKUP & RESTORE PANEL
+// TAB 5 — BACKUP & RESTORE PANEL
 // ============================================================
 
 static HWND g_hwndBackupList = nullptr;
@@ -1194,21 +2026,34 @@ static HWND g_hwndBackupInfo = nullptr;
 
 static void CreateBackupPanel(HWND parent) {
     MakeLabel(parent, L"Backups:", 20, 16, 80, 20);
-    g_hwndBackupList = MakeListBox(parent, IDC_BACKUP_LIST, 110, 16, 470, 140);
+    g_hwndBackupList = MakeListBox(parent, IDC_BACKUP_LIST, 110, 16, 600, 130);
 
-    MakeButton(parent, L"Backup Now",        IDC_BTN_BACKUP_NOW,   20, 170, 110, 30);
-    MakeButton(parent, L"Restore Selected",  IDC_BTN_RESTORE,      20, 210, 130, 30);
-    MakeButton(parent, L"Export Characters", IDC_BTN_EXPORT_CHARS, 170, 170, 130, 30);
-    MakeButton(parent, L"Import Characters", IDC_BTN_IMPORT_CHARS, 170, 210, 130, 30);
+    // 6 harmonious buttons in 3x2 grid
+    int bx = 20, by = 160, bw = 140, bh = 30, gap = 10;
+    MakeButton(parent, L"Backup Now",        IDC_BTN_BACKUP_NOW,   bx,            by,      bw, bh);
+    MakeButton(parent, L"Restore Selected",  IDC_BTN_RESTORE,      bx+bw+gap,     by,      bw, bh);
+    MakeButton(parent, L"Database Size",     IDC_BTN_DB_SIZE,      bx+2*(bw+gap), by,      bw, bh);
+    MakeButton(parent, L"Export Characters", IDC_BTN_EXPORT_CHARS, bx,            by+bh+6, bw, bh);
+    MakeButton(parent, L"Import Characters", IDC_BTN_IMPORT_CHARS, bx+bw+gap,     by+bh+6, bw, bh);
+    MakeButton(parent, L"Clone Character",   IDC_BTN_CLONE_CHAR,   bx+2*(bw+gap), by+bh+6, bw, bh);
 
-    g_hwndBackupInfo = MakeLabel(parent, L"", 20, 255, 570, 80, SS_LEFT | WS_BORDER);
+    // Clone Character fields
+    int cy = by + 2*(bh+6) + 10;
+    MakeLabel(parent, L"Clone:", 20, cy+4, 42, 20);
+    MakeLabel(parent, L"Source:", 66, cy+4, 48, 20);
+    g_hwndCloneSource = MakeEdit(parent, IDC_CLONE_SOURCE, 118, cy, 160, 24);
+    MakeLabel(parent, L"New Name:", 290, cy+4, 68, 20);
+    g_hwndCloneNewName = MakeEdit(parent, IDC_CLONE_NEWNAME, 362, cy, 160, 24);
+    cy += 34;
+
+    g_hwndBackupInfo = MakeResultBox(parent, 0, 20, cy, 780, 180);
 
     MakeLabel(parent,
         L"Restore: select a backup from the list, then click Restore Selected.",
-        20, 350, 560, 18);
+        20, cy+186, 560, 18);
     MakeLabel(parent,
-        L"Export Characters: saves player data only. For transferring to another server version.",
-        20, 372, 560, 18);
+        L"Clone: duplicates a character with all gear/AAs/spells under a new name.",
+        20, cy+206, 560, 18);
 }
 
 static void RefreshBackupList() {
@@ -1403,52 +2248,130 @@ static void DoImportCharacters() {
 // TAB 5 — LOG VIEWER PANEL
 // ============================================================
 
-static HWND g_hwndLogText  = nullptr;
-static HWND g_hwndLogLines = nullptr;
-
 static void CreateLogPanel(HWND parent) {
-    MakeLabel(parent, L"Lines:", 20, 20, 50, 22);
-    g_hwndLogLines = MakeCombo(parent, IDC_LOG_LINES_COMBO, 75, 17, 80, 120);
+    int y = 14;
+
+    // Row 1: log file selector + lines + load + refresh
+    MakeLabel(parent, L"Log:", 20, y+4, 30, 20);
+    g_hwndLogFileCombo = MakeCombo(parent, IDC_LOG_FILE_COMBO, 54, y, 180, 200);
+    SendMessageW(g_hwndLogFileCombo, CB_ADDSTRING, 0, (LPARAM)L"Container (stdout)");
+    SendMessageW(g_hwndLogFileCombo, CB_ADDSTRING, 0, (LPARAM)L"eqemu_debug.log");
+    SendMessageW(g_hwndLogFileCombo, CB_ADDSTRING, 0, (LPARAM)L"world.log");
+    SendMessageW(g_hwndLogFileCombo, CB_ADDSTRING, 0, (LPARAM)L"crash.log");
+    SendMessage(g_hwndLogFileCombo, CB_SETCURSEL, 0, 0);
+
+    MakeLabel(parent, L"Lines:", 244, y+4, 42, 20);
+    g_hwndLogLines = MakeCombo(parent, IDC_LOG_LINES_COMBO, 290, y, 70, 120);
     SendMessageW(g_hwndLogLines, CB_ADDSTRING, 0, (LPARAM)L"50");
     SendMessageW(g_hwndLogLines, CB_ADDSTRING, 0, (LPARAM)L"100");
     SendMessageW(g_hwndLogLines, CB_ADDSTRING, 0, (LPARAM)L"500");
     SendMessageW(g_hwndLogLines, CB_ADDSTRING, 0, (LPARAM)L"All");
     SendMessage(g_hwndLogLines, CB_SETCURSEL, 1, 0);
-    MakeButton(parent, L"Load Log",    IDC_BTN_LOAD_LOG,    170, 16, 90, 26);
-    MakeButton(parent, L"Refresh",     IDC_BTN_REFRESH_LOG, 270, 16, 90, 26);
+    MakeButton(parent, L"Load",    IDC_BTN_LOAD_LOG,    370, y, 70, 26);
+    MakeButton(parent, L"Refresh", IDC_BTN_REFRESH_LOG, 450, y, 70, 26);
+    y += 36;
+
+    // Row 2: filter + auto-refresh
+    MakeLabel(parent, L"Filter:", 20, y+4, 42, 20);
+    g_hwndLogFilter = MakeEdit(parent, IDC_LOG_FILTER_EDIT, 66, y, 250, 24);
+    MakeButton(parent, L"Apply", IDC_BTN_APPLY_FILTER, 326, y, 70, 26);
+    HWND chkAR = MakeCheck(parent, L"Auto-Refresh (30s)",
+                            IDC_CHK_AUTO_REFRESH, 410, y+2, 160, 22);
+    SendMessage(chkAR, BM_SETCHECK, BST_UNCHECKED, 0); // default off
+    y += 36;
+
     g_hwndLogText = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
         WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL |
         ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
-        20, 54, 740, 370,
+        20, y, 880, 420,
         parent, (HMENU)(UINT_PTR)IDC_LOG_TEXT, g_hInst, nullptr);
     if (g_hwndLogText && g_hFontMono)
         SendMessage(g_hwndLogText, WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
 }
 
+static void DoApplyLogFilter() {
+    if (g_logFullText.empty()) return;
+    wchar_t filterBuf[256] = {};
+    if (g_hwndLogFilter) GetWindowTextW(g_hwndLogFilter, filterBuf, 256);
+    if (!filterBuf[0]) {
+        // No filter — show full text
+        SetWindowTextW(g_hwndLogText, g_logFullText.c_str());
+        return;
+    }
+    std::wstring filter = filterBuf;
+    // Lower-case filter for case-insensitive match
+    std::wstring filterLo = filter;
+    for (auto& c : filterLo) c = towlower(c);
+
+    std::wstring filtered;
+    std::wistringstream ss(g_logFullText);
+    std::wstring line;
+    while (std::getline(ss, line)) {
+        std::wstring lineLo = line;
+        for (auto& c : lineLo) c = towlower(c);
+        if (lineLo.find(filterLo) != std::wstring::npos)
+            filtered += line + L"\r\n";
+    }
+    if (filtered.empty()) filtered = L"(no lines matching '" + filter + L"')";
+    SetWindowTextW(g_hwndLogText, filtered.c_str());
+}
+
 static void DoLoadLog() {
     if (g_operationBusy) return;
-    int sel = (int)SendMessage(g_hwndLogLines, CB_GETCURSEL, 0, 0);
+    int fileSel = g_hwndLogFileCombo ?
+        (int)SendMessage(g_hwndLogFileCombo, CB_GETCURSEL, 0, 0) : 0;
+    int linesSel = (int)SendMessage(g_hwndLogLines, CB_GETCURSEL, 0, 0);
     std::wstring tailArg;
-    switch (sel) {
+    switch (linesSel) {
         case 0: tailArg = L"50";  break;
         case 1: tailArg = L"100"; break;
         case 2: tailArg = L"500"; break;
-        case 3: tailArg = L"";    break;
-        default: tailArg = L"100";
+        default: tailArg = L"";
     }
     SetBusy(true);
     SetStatus(L"Loading log...");
     SetWindowTextW(g_hwndLogText, L"Loading...");
-    std::thread([tailArg]{
-        std::wstring cmd = std::wstring(L"docker logs ");
-        if (!tailArg.empty()) cmd += L"--tail " + tailArg + L" ";
-        cmd += CONTAINER;
+
+    std::thread([fileSel, tailArg]{
+        std::wstring cmd;
+        if (fileSel == 0) {
+            // Container stdout via docker logs
+            cmd = L"docker logs ";
+            if (!tailArg.empty()) cmd += L"--tail " + tailArg + L" ";
+            cmd += CONTAINER;
+        } else {
+            // Log files inside the container — try common paths
+            const wchar_t* logNames[] = {
+                L"eqemu_debug.log",
+                L"world.log",
+                L"crash.log",
+            };
+            const wchar_t* logName = logNames[fileSel - 1];
+            // Try multiple common log locations with sh -c
+            cmd = std::wstring(L"docker exec ") + CONTAINER +
+                L" sh -c \"for d in /quarm/logs /quarm/server/logs /home/eqemu/server/logs /opt/eqemu/logs; do "
+                L"if [ -f \\\"$d/" + std::wstring(logName) + L"\\\" ]; then ";
+            if (!tailArg.empty())
+                cmd += L"tail -n " + tailArg + L" \\\"$d/" + std::wstring(logName) + L"\\\"; ";
+            else
+                cmd += L"cat \\\"$d/" + std::wstring(logName) + L"\\\"; ";
+            cmd += L"exit 0; fi; done; echo '(log file not found - checked /quarm/logs, /quarm/server/logs, /home/eqemu/server/logs)'\"";
+        }
         std::string out = RunCommand(cmd);
-        std::wstring wout = ToWide(out);
-        std::wstring norm = NormalizeNewlines(wout);
+        std::wstring norm = NormalizeNewlines(ToWide(out));
         auto* res = new AsyncResult();
         res->success = true;
-        res->message = norm;
+        if (norm.empty()) {
+            const wchar_t* hints[] = {
+                L"(Container stdout is empty. The server may not have produced output yet.)",
+                L"(eqemu_debug.log does not exist. This file is only created when debug-level file logging is enabled in the server's log configuration. Use Container (stdout) for all server output.)",
+                L"(world.log does not exist. The world server logs to Container (stdout) by default. File-based logging requires a log.ini configuration change inside the container.)",
+                L"(crash.log does not exist. This is normal and expected \x2014 it means no zone or world process has crashed.)",
+            };
+            res->message = hints[fileSel < 4 ? fileSel : 0];
+        } else {
+            res->message = norm;
+        }
         PostMessageW(g_hwndMain, WM_ASYNC_DONE, TAB_LOG, (LPARAM)res);
     }).detach();
 }
@@ -1500,23 +2423,88 @@ static void RefreshNetworkTab() {
     if (g_hwndNetCurrent)
         SetWindowTextW(g_hwndNetCurrent, addr.c_str());
     BuildEqhostContent(addr);
+
+    // Detect LAN vs WAN
+    if (g_hwndNetModeLabel) {
+        bool isLan = false;
+        // Check private ranges: 10.x, 172.16-31.x, 192.168.x, 127.x
+        if (addr.rfind(L"10.", 0) == 0 ||
+            addr.rfind(L"192.168.", 0) == 0 ||
+            addr.rfind(L"127.", 0) == 0) {
+            isLan = true;
+        } else if (addr.rfind(L"172.", 0) == 0 && addr.size() > 4) {
+            int second = _wtoi(addr.c_str() + 4);
+            if (second >= 16 && second <= 31) isLan = true;
+        }
+        if (isLan)
+            SetWindowTextW(g_hwndNetModeLabel, L"Mode: LAN \x2014 private network (players on same network only)");
+        else if (addr == L"127.0.0.1")
+            SetWindowTextW(g_hwndNetModeLabel, L"Mode: Local only \x2014 only this computer can connect");
+        else
+            SetWindowTextW(g_hwndNetModeLabel, L"Mode: WAN \x2014 public IP (players need port forwarding: TCP/UDP 6000, TCP 9000)");
+    }
 }
 
 static void CreateNetworkPanel(HWND parent) {
     MakeLabel(parent, L"Current Server Address:", 20, 20, 170, 20);
     g_hwndNetCurrent = MakeLabel(parent, L"", 200, 20, 200, 20);
-    MakeButton(parent, L"Change Network Setting", IDC_BTN_CHANGE_NETWORK, 20, 50, 180, 30);
-    MakeButton(parent, L"Write eqhost.txt...",    IDC_BTN_WRITE_EQHOST,  215, 50, 150, 30);
-    g_hwndNetAdapterList = MakeListBox(parent, IDC_NET_ADAPTER_LIST, 20, 100, 400, 100);
+    g_hwndNetModeLabel = MakeLabel(parent, L"", 20, 44, 660, 18);
+
+    MakeButton(parent, L"Change Network Setting", IDC_BTN_CHANGE_NETWORK, 20, 68, 180, 30);
+    MakeButton(parent, L"Write eqhost.txt...",    IDC_BTN_WRITE_EQHOST,  210, 68, 150, 30);
+    MakeButton(parent, L"Test Port 6000",         IDC_BTN_TEST_PORT,     370, 68, 120, 30);
+    MakeButton(parent, L"Copy IP",                IDC_BTN_COPY_IP,       500, 68,  80, 30);
+
+    g_hwndNetAdapterList = MakeListBox(parent, IDC_NET_ADAPTER_LIST, 20, 116, 400, 100);
     ShowWindow(g_hwndNetAdapterList, SW_HIDE);
-    MakeButton(parent, L"Confirm Selection", IDC_BTN_NET_CONFIRM, 430, 100, 140, 30);
+    MakeButton(parent, L"Confirm Selection", IDC_BTN_NET_CONFIRM, 430, 116, 140, 30);
     ShowWindow(GetDlgItem(parent, IDC_BTN_NET_CONFIRM), SW_HIDE);
-    MakeLabel(parent, L"eqhost.txt content (copy to your TAKP client folder):", 20, 215, 400, 20);
+
+    MakeLabel(parent, L"eqhost.txt content (copy to your TAKP client folder):", 20, 232, 400, 20);
     g_hwndEqhostContent = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
         WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_READONLY | WS_VSCROLL,
-        20, 238, 420, 120, parent,
+        20, 255, 520, 140, parent,
         (HMENU)(UINT_PTR)IDC_NET_EQHOST_CONTENT, g_hInst, nullptr);
-    g_hwndNetStatusMsg = MakeLabel(parent, L"", 20, 375, 560, 36);
+    g_hwndNetStatusMsg = MakeLabel(parent, L"", 20, 410, 800, 40);
+}
+
+static void DoTestPort() {
+    if (g_operationBusy) return;
+    SetBusy(true);
+    SetStatus(L"Testing port 6000...");
+    if (g_hwndNetStatusMsg)
+        SetWindowTextW(g_hwndNetStatusMsg, L"Testing port 6000, please wait...");
+    std::thread([]{
+        std::string out = RunCommand(
+            L"powershell -NoProfile -Command \""
+            L"$r = Test-NetConnection -ComputerName localhost -Port 6000 -WarningAction SilentlyContinue;"
+            L"if($r.TcpTestSucceeded){'OPEN'}else{'CLOSED'}\"");
+        std::wstring result = ToWide(TrimRight(out));
+        std::wstring msg = (result.find(L"OPEN") != std::wstring::npos)
+            ? L"\x2714 Port 6000 is OPEN \x2014 login server is reachable on this machine."
+            : L"\x2716 Port 6000 is CLOSED \x2014 login server may not be running or is blocked by firewall.";
+        // Must update UI from main thread context — use PostMessage
+        auto* res = new AsyncResult{ true, msg };
+        PostMessageW(g_hwndMain, WM_ASYNC_DONE, TAB_NETWORK, (LPARAM)res);
+    }).detach();
+}
+
+static void DoCopyIP() {
+    std::wstring addr = GetServerAddress();
+    if (OpenClipboard(g_hwndMain)) {
+        EmptyClipboard();
+        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, (addr.size() + 1) * sizeof(wchar_t));
+        if (hMem) {
+            wchar_t* p = (wchar_t*)GlobalLock(hMem);
+            wcscpy_s(p, addr.size() + 1, addr.c_str());
+            GlobalUnlock(hMem);
+            SetClipboardData(CF_UNICODETEXT, hMem);
+        }
+        CloseClipboard();
+        if (g_hwndNetStatusMsg)
+            SetWindowTextW(g_hwndNetStatusMsg,
+                (std::wstring(L"Copied to clipboard: ") + addr).c_str());
+    }
 }
 
 static void DoChangeNetwork() {
@@ -1611,8 +2599,6 @@ static void DoWriteEqhost() {
 // TAB 7 — ADVANCED PANEL
 // ============================================================
 
-static HWND g_hwndAdvResult = nullptr;
-
 static bool GetAutoStartEnabled() {
     HKEY hKey;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, AUTOSTART_KEY, 0, KEY_READ, &hKey) != ERROR_SUCCESS)
@@ -1665,7 +2651,119 @@ static bool GetNoBackupOnStop() {
     return false;
 }
 
-static void SaveSettings(bool noBackup, int retention) {
+static bool GetAlwaysOnTop() {
+    wchar_t cfgPath[MAX_PATH];
+    wcscpy_s(cfgPath, g_installDir);
+    PathAppendW(cfgPath, L".qsm_settings");
+    std::ifstream f(cfgPath);
+    if (!f) return false;
+    std::string line;
+    while (std::getline(f, line)) {
+        if (line == "always_on_top=1") return true;
+    }
+    return false;
+}
+
+static bool GetDarkMode() {
+    wchar_t cfgPath[MAX_PATH];
+    wcscpy_s(cfgPath, g_installDir);
+    PathAppendW(cfgPath, L".qsm_settings");
+    std::ifstream f(cfgPath);
+    if (!f) return true;  // default: dark mode ON
+    std::string line;
+    while (std::getline(f, line)) {
+        if (line == "dark_mode=0") return false;
+        if (line == "dark_mode=1") return true;
+    }
+    return true;  // default: dark mode ON
+}
+
+static void ApplyAlwaysOnTop(bool onTop) {
+    if (!g_hwndMain) return;
+    SetWindowPos(g_hwndMain,
+        onTop ? HWND_TOPMOST : HWND_NOTOPMOST,
+        0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+}
+
+static void ApplyDarkMode(bool dark) {
+    g_darkMode = dark;
+    if (g_hbrDark)       { DeleteObject(g_hbrDark);       g_hbrDark       = nullptr; }
+    if (g_hbrDarkCtl)    { DeleteObject(g_hbrDarkCtl);    g_hbrDarkCtl    = nullptr; }
+    if (g_hbrDarkAccent) { DeleteObject(g_hbrDarkAccent); g_hbrDarkAccent = nullptr; }
+    if (dark) {
+        g_hbrDark       = CreateSolidBrush(CLR_DARK_BG);
+        g_hbrDarkCtl    = CreateSolidBrush(CLR_DARK_CTL);
+        g_hbrDarkAccent = CreateSolidBrush(CLR_DARK_ACCENT);
+    }
+
+    // Dark title bar via DWM (Windows 10 1809+ / Windows 11)
+    if (g_hwndMain) {
+        BOOL useDark = dark ? TRUE : FALSE;
+        DwmSetWindowAttribute(g_hwndMain, 20, &useDark, sizeof(useDark));
+        DwmSetWindowAttribute(g_hwndMain, 19, &useDark, sizeof(useDark));
+    }
+
+    // Tabs stay normal in both modes - no dark theming on tab control
+
+    // Toggle owner-draw on buttons + theme on controls
+    if (g_hwndMain) {
+        for (int i = 0; i < NUM_TABS; ++i) {
+            if (g_hwndPanels[i]) {
+                EnumChildWindows(g_hwndPanels[i], [](HWND child, LPARAM dark) -> BOOL {
+                    wchar_t cls[64] = {};
+                    GetClassNameW(child, cls, 64);
+                    if (_wcsicmp(cls, L"Button") == 0) {
+                        LONG st = GetWindowLong(child, GWL_STYLE);
+                        LONG btnType = st & BS_TYPEMASK;
+                        if (dark) {
+                            // Only convert push buttons to owner-draw, not checkboxes
+                            if (btnType == BS_PUSHBUTTON || btnType == BS_DEFPUSHBUTTON) {
+                                st = (st & ~BS_TYPEMASK) | BS_OWNERDRAW;
+                                SetWindowLong(child, GWL_STYLE, st);
+                            }
+                            // Don't apply DarkMode_Explorer to checkboxes —
+                            // let WM_CTLCOLORSTATIC handle their text color
+                            if (btnType != BS_AUTOCHECKBOX && btnType != BS_CHECKBOX &&
+                                btnType != BS_3STATE && btnType != BS_AUTO3STATE &&
+                                btnType != BS_RADIOBUTTON && btnType != BS_AUTORADIOBUTTON) {
+                                SetWindowTheme(child, L"DarkMode_Explorer", nullptr);
+                            } else {
+                                // Clear any theme on checkboxes so WM_CTLCOLORSTATIC works
+                                SetWindowTheme(child, L"", L"");
+                            }
+                        } else {
+                            // Restore owner-draw buttons back to normal push buttons
+                            if (btnType == BS_OWNERDRAW) {
+                                st = (st & ~BS_TYPEMASK) | BS_PUSHBUTTON;
+                                SetWindowLong(child, GWL_STYLE, st);
+                            }
+                            SetWindowTheme(child, L"", L"");
+                        }
+                    } else {
+                        // Non-button controls: apply/clear explorer theme
+                        if (dark)
+                            SetWindowTheme(child, L"DarkMode_Explorer", nullptr);
+                        else
+                            SetWindowTheme(child, L"", L"");
+                    }
+                    RedrawWindow(child, nullptr, nullptr,
+                        RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
+                    return TRUE;
+                }, (LPARAM)dark);
+                InvalidateRect(g_hwndPanels[i], nullptr, TRUE);
+            }
+        }
+        if (g_hwndStatus) {
+            if (dark) SetWindowTheme(g_hwndStatus, L"DarkMode_Explorer", nullptr);
+            else      SetWindowTheme(g_hwndStatus, L"", L"");
+            InvalidateRect(g_hwndStatus, nullptr, TRUE);
+        }
+        RedrawWindow(g_hwndMain, nullptr, nullptr,
+            RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
+    }
+}
+
+static void SaveSettings(bool noBackup, int retention, bool alwaysOnTop, bool darkMode) {
     wchar_t cfgPath[MAX_PATH];
     wcscpy_s(cfgPath, g_installDir);
     PathAppendW(cfgPath, L".qsm_settings");
@@ -1673,6 +2771,8 @@ static void SaveSettings(bool noBackup, int retention) {
     if (f) {
         f << "no_backup_on_stop=" << (noBackup ? 1 : 0) << "\n";
         f << "backup_retention=" << retention << "\n";
+        f << "always_on_top=" << (alwaysOnTop ? 1 : 0) << "\n";
+        f << "dark_mode=" << (darkMode ? 1 : 0) << "\n";
     }
 }
 
@@ -1688,39 +2788,1652 @@ static void PruneOldBackups(int keepCount) {
     }
 }
 
+// ============================================================
+// TAB 5 — SERVER PANEL (Rule Editor + XP Slider + Guild Mgr)
+// ============================================================
+
+
+// ============================================================
+// TAB 5 — ZONES PANEL
+// ============================================================
+
+static void CreateZonePanel(HWND parent) {
+    int y = 8;
+
+    // --- ZEM (Zone Experience Modifier) ---
+    MakeLabel(parent, L"Zone Exp Modifier (ZEM):", 20, y+4, 166, 20);
+    g_hwndZemLabel = MakeLabel(parent, L"(select a zone below, then click Refresh)", 190, y+4, 340, 20);
+    MakeLabel(parent, L"ZEM:", 560, y+4, 32, 20);
+    g_hwndZemValue = MakeEdit(parent, IDC_ZEM_VALUE, 596, y, 60, 24);
+    MakeButton(parent, L"Save ZEM", IDC_BTN_ZEM_SAVE, 664, y, 76, 26);
+    MakeButton(parent, L"Default", IDC_BTN_ZEM_DEFAULT, 746, y, 62, 26);
+    y += 30;
+
+    // Running Zones
+    MakeLabel(parent, L"Running Zones:", 20, y, 110, 18);
+    y += 18;
+    g_hwndZoneList = CreateWindowExW(WS_EX_CLIENTEDGE, L"LISTBOX", L"",
+        WS_CHILD | WS_VISIBLE | WS_VSCROLL | LBS_NOTIFY | WS_TABSTOP | LBS_USETABSTOPS,
+        20, y, 760, 140, parent, (HMENU)(UINT_PTR)IDC_ZONE_LIST, g_hInst, nullptr);
+    // Set tab stops: Long Name | Short Name | Spawns | ZEM
+    // Units are 1/4 average char width of the listbox font
+    int tabs[] = { 130, 200, 230 };
+    SendMessage(g_hwndZoneList, LB_SETTABSTOPS, 3, (LPARAM)tabs);
+    if (g_hwndZoneList && g_hFontMono)
+        SendMessage(g_hwndZoneList, WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
+    y += 144;
+
+    // Zone Controls
+    MakeButton(parent, L"Refresh Zones",   IDC_BTN_REFRESH_ZONES, 20,  y, 100, 26);
+    MakeButton(parent, L"Stop Zone",       IDC_BTN_STOP_ZONE,     128, y, 80,  26);
+    MakeButton(parent, L"Restart Zone",    IDC_BTN_RESTART_ZONE,  216, y, 92,  26);
+    MakeButton(parent, L"Repop All Zones", IDC_BTN_REPOP_ZONES,   316, y, 120, 26);
+    y += 30;
+
+    // Dynamic Zones + Start Zone + Find Zone
+    MakeLabel(parent, L"Dynamic Zones:", 20, y+4, 96, 20);
+    g_hwndGameZoneCur = MakeLabel(parent, L"(?)", 120, y+4, 30, 20);
+    g_hwndGameZoneCbo = MakeCombo(parent, IDC_GAME_ZONE_COMBO, 154, y, 56, 200);
+    SendMessageW(g_hwndGameZoneCbo, CB_ADDSTRING, 0, (LPARAM)L"5");
+    SendMessageW(g_hwndGameZoneCbo, CB_ADDSTRING, 0, (LPARAM)L"10");
+    SendMessageW(g_hwndGameZoneCbo, CB_ADDSTRING, 0, (LPARAM)L"15");
+    SendMessageW(g_hwndGameZoneCbo, CB_ADDSTRING, 0, (LPARAM)L"20");
+    SendMessageW(g_hwndGameZoneCbo, CB_ADDSTRING, 0, (LPARAM)L"25");
+    MakeButton(parent, L"Set", IDC_BTN_SET_ZONE_COUNT, 216, y, 40, 26);
+    MakeLabel(parent, L"(restart)", 262, y+4, 56, 20);
+    MakeLabel(parent, L"Start Zone:", 340, y+4, 74, 20);
+    g_hwndZoneStartEdit = MakeEdit(parent, IDC_ZONE_START_EDIT, 418, y, 120, 24);
+    MakeButton(parent, L"Start", IDC_BTN_START_ZONE, 544, y, 52, 26);
+    MakeLabel(parent, L"Find Zone:", 614, y+4, 68, 20);
+    g_hwndZoneFindEdit = MakeEdit(parent, IDC_ZONE_FIND_EDIT, 686, y, 120, 24);
+    MakeButton(parent, L"Find Zone", IDC_BTN_FIND_ZONE_STATUS, 812, y, 80, 26);
+    y += 34;
+
+    // Zone Environment
+    MakeLabel(parent, L"Zone Environment:", 20, y, 130, 20);
+    y += 22;
+    MakeLabel(parent, L"Zone:", 20, y+4, 36, 20);
+    g_hwndEnvZoneEdit = MakeEdit(parent, IDC_ENV_ZONE_EDIT, 60, y, 130, 24);
+    MakeButton(parent, L"Load Zone", IDC_BTN_ENV_LOAD, 196, y, 86, 26);
+    MakeLabel(parent, L"Weather Type:", 296, y+4, 88, 20);
+    g_hwndEnvWeatherCbo = MakeCombo(parent, IDC_ENV_WEATHER_COMBO, 388, y, 100, 120);
+    SendMessageW(g_hwndEnvWeatherCbo, CB_ADDSTRING, 0, (LPARAM)L"0 - Off");
+    SendMessageW(g_hwndEnvWeatherCbo, CB_ADDSTRING, 0, (LPARAM)L"1 - Rain");
+    SendMessageW(g_hwndEnvWeatherCbo, CB_ADDSTRING, 0, (LPARAM)L"2 - Snow");
+    MakeLabel(parent, L"Find:", 510, y+4, 34, 20);
+    g_hwndEnvFindEdit = MakeEdit(parent, IDC_ENV_FIND_EDIT, 548, y, 120, 24);
+    MakeButton(parent, L"Find Zone", IDC_BTN_ENV_FIND_ZONE, 674, y, 76, 26);
+    y += 28;
+    MakeLabel(parent, L"Fog Start:", 20, y+4, 62, 20);
+    g_hwndEnvFogMin = MakeEdit(parent, IDC_ENV_FOG_MIN, 86, y, 46, 24);
+    MakeLabel(parent, L"Fog End:", 142, y+4, 54, 20);
+    g_hwndEnvFogMax = MakeEdit(parent, IDC_ENV_FOG_MAX, 200, y, 46, 24);
+    MakeLabel(parent, L"Fog Density:", 258, y+4, 76, 20);
+    g_hwndEnvFogDensity = MakeEdit(parent, IDC_ENV_FOG_DENSITY, 338, y, 40, 24);
+    MakeLabel(parent, L"Fog Color R:", 394, y+4, 76, 20);
+    g_hwndEnvFogR = MakeEdit(parent, IDC_ENV_FOG_R, 474, y, 32, 24);
+    MakeLabel(parent, L"G:", 512, y+4, 16, 20);
+    g_hwndEnvFogG = MakeEdit(parent, IDC_ENV_FOG_G, 532, y, 32, 24);
+    MakeLabel(parent, L"B:", 570, y+4, 16, 20);
+    g_hwndEnvFogB = MakeEdit(parent, IDC_ENV_FOG_B, 590, y, 32, 24);
+    y += 28;
+    MakeLabel(parent, L"Clip Near:", 20, y+4, 60, 20);
+    g_hwndEnvClipMin = MakeEdit(parent, IDC_ENV_CLIP_MIN, 84, y, 50, 24);
+    MakeLabel(parent, L"Clip Far:", 146, y+4, 54, 20);
+    g_hwndEnvClipMax = MakeEdit(parent, IDC_ENV_CLIP_MAX, 204, y, 50, 24);
+    MakeButton(parent, L"Save Zone Settings", IDC_BTN_ENV_SAVE, 274, y, 130, 26);
+    MakeButton(parent, L"Reset to Zone Default", IDC_BTN_ENV_DEFAULT, 414, y, 150, 26);
+    y += 34;
+
+    g_hwndZoneResult = MakeResultBox(parent, IDC_STATUS_RESULT, 20, y, 940, 140);
+}
+
+static void CreateServerPanel(HWND parent) {
+    int y = 10;
+
+    // --- XP Multiplier Slider (1.00x - 10.00x in 0.25 steps) ---
+    MakeLabel(parent, L"XP Rate:", 20, y+4, 56, 20);
+    g_hwndXpSlider = CreateWindowExW(0, TRACKBAR_CLASSW, L"",
+        WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS | TBS_HORZ | WS_TABSTOP,
+        80, y, 400, 28, parent, (HMENU)(UINT_PTR)IDC_XP_SLIDER, g_hInst, nullptr);
+    SendMessage(g_hwndXpSlider, TBM_SETRANGE, TRUE, MAKELPARAM(4, 40));
+    SendMessage(g_hwndXpSlider, TBM_SETPOS, TRUE, 4);
+    SendMessage(g_hwndXpSlider, TBM_SETTICFREQ, 4, 0);
+    g_hwndXpLabel = MakeLabel(parent, L"1.00x", 488, y+4, 50, 20);
+    MakeButton(parent, L"Apply", IDC_BTN_APPLY_XP, 546, y, 54, 26);
+    MakeLabel(parent, L"(takes effect on next zone-in)", 614, y+4, 220, 20);
+    y += 32;
+
+    // --- AA XP Multiplier Slider (below XP) ---
+    MakeLabel(parent, L"AA Rate:", 20, y+4, 56, 20);
+    g_hwndAaSlider = CreateWindowExW(0, TRACKBAR_CLASSW, L"",
+        WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS | TBS_HORZ | WS_TABSTOP,
+        80, y, 400, 28, parent, (HMENU)(UINT_PTR)IDC_AA_SLIDER, g_hInst, nullptr);
+    SendMessage(g_hwndAaSlider, TBM_SETRANGE, TRUE, MAKELPARAM(4, 40));
+    SendMessage(g_hwndAaSlider, TBM_SETPOS, TRUE, 4);
+    SendMessage(g_hwndAaSlider, TBM_SETTICFREQ, 4, 0);
+    g_hwndAaLabel = MakeLabel(parent, L"1.00x", 488, y+4, 50, 20);
+    MakeButton(parent, L"Apply", IDC_BTN_APPLY_AA, 546, y, 54, 26);
+    y += 34;
+
+    // --- Rule Editor ---
+    MakeLabel(parent, L"Server Rules:", 20, y, 100, 20);
+    y += 22;
+    MakeLabel(parent, L"Search:", 20, y+4, 48, 20);
+    g_hwndRuleSearch = MakeEdit(parent, IDC_RULE_SEARCH, 72, y, 240, 24);
+    MakeButton(parent, L"Load Rules", IDC_BTN_LOAD_RULES, 322, y, 100, 26);
+    y += 30;
+    g_hwndRuleList = MakeListBox(parent, IDC_RULE_LIST, 20, y, 660, 120);
+    y += 126;
+    MakeLabel(parent, L"Selected:", 20, y+4, 58, 20);
+    g_hwndRuleSelected = MakeLabel(parent, L"(none)", 82, y+4, 400, 20);
+    y += 22;
+    MakeLabel(parent, L"New Value:", 20, y+4, 70, 20);
+    g_hwndRuleValue = MakeEdit(parent, IDC_RULE_VALUE, 96, y, 200, 24);
+    MakeButton(parent, L"Save Rule", IDC_BTN_SAVE_RULE, 306, y, 90, 26);
+    MakeButton(parent, L"Reset to Original", IDC_BTN_RESET_RULE, 406, y, 140, 26);
+    y += 44;
+
+    // --- Guild Manager ---
+    MakeLabel(parent, L"Guild Manager:", 20, y, 110, 20);
+    MakeButton(parent, L"List Guilds", IDC_BTN_LIST_GUILDS, 136, y, 100, 24);
+    y += 28;
+    MakeLabel(parent, L"Guild Name:", 20, y+4, 80, 20);
+    g_hwndGuildName = MakeEdit(parent, IDC_GUILD_NAME, 106, y, 160, 24);
+    MakeLabel(parent, L"Leader:", 278, y+4, 48, 20);
+    g_hwndGuildLeader = MakeEdit(parent, IDC_GUILD_LEADER, 330, y, 140, 24);
+    y += 28;
+    MakeButton(parent, L"Create Guild",  IDC_BTN_CREATE_GUILD,     20,  y, 110, 26);
+    MakeButton(parent, L"Set Leader",    IDC_BTN_SET_GUILD_LEADER, 140, y, 100, 26);
+    MakeButton(parent, L"Disband",       IDC_BTN_DISBAND_GUILD,    250, y, 80,  26);
+    MakeButton(parent, L"View Roster",   IDC_BTN_VIEW_ROSTER,      340, y, 110, 26);
+    MakeLabel(parent, L"(select guild from result first)", 460, y+4, 220, 20);
+    y += 32;
+
+    g_hwndServerResult = MakeResultBox(parent, IDC_SERVER_RESULT, 20, y, 940, 130);
+}
+
+// ============================================================
+// NEW OPERATIONS — Status Tab
+// ============================================================
+
+static void DoRepopZones() {
+    if (!CheckServerRunning(L"Repop Zones")) return;
+    int r = MessageBoxW(g_hwndMain,
+        L"Force all NPCs to respawn across all zones?\n\n"
+        L"This clears all respawn timers and restarts zone processes.\n"
+        L"All current NPCs will despawn and respawn fresh.",
+        L"Confirm Repop", MB_YESNO | MB_ICONQUESTION);
+    if (r != IDYES) return;
+    SetBusy(true);
+    SetStatus(L"Repopulating zones...");
+    std::thread([]{
+        RunQuery(L"DELETE FROM respawn_times");
+        RunCommand(std::wstring(L"docker exec ") + CONTAINER + L" killall zone");
+        Sleep(3000);
+        auto* res = new AsyncResult{ true, L"Zone repop complete. All NPCs will respawn." };
+        PostMessageW(g_hwndMain, WM_ASYNC_DONE, TAB_STATUS, (LPARAM)res);
+    }).detach();
+}
+
+static void DoSendAnnouncement() {
+    if (!CheckServerRunning(L"Send Announcement")) return;
+    wchar_t msg[512] = {};
+    if (g_hwndAnnounceEdit) GetWindowTextW(g_hwndAnnounceEdit, msg, 512);
+    if (!msg[0]) {
+        MessageBoxW(g_hwndMain, L"Enter an announcement message first.",
+            L"Announcement", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::wstring safe;
+    for (wchar_t c : std::wstring(msg)) {
+        if (c == L'\'') safe += L"''";
+        else safe += c;
+    }
+    RunQuery(L"UPDATE rule_values SET rule_value='[ANNOUNCE] " + safe +
+             L"' WHERE rule_name='World:MOTD'");
+    SetStatus(L"Announcement set \x2014 players will see it on next zone-in.");
+}
+
+// ============================================================
+// NEW OPERATIONS — Status Tab (Zone Management)
+// ============================================================
+
+static void DoRefreshZones() {
+    if (!IsContainerRunning()) {
+        if (g_hwndZoneList) {
+            SendMessage(g_hwndZoneList, LB_RESETCONTENT, 0, 0);
+            SendMessageW(g_hwndZoneList, LB_ADDSTRING, 0, (LPARAM)L"(server is not running)");
+        }
+        return;
+    }
+
+    // Count total zone processes
+    std::string procCountOut = TrimRight(RunCommand(
+        std::wstring(L"docker exec ") + CONTAINER +
+        L" sh -c \"ps -eo args 2>/dev/null | grep -c '[z]one '\""));
+    int totalProcs = 0;
+    for (char c : procCountOut) { if (isdigit(c)) totalProcs = totalProcs * 10 + (c - '0'); }
+
+    // Get configured dynamic count
+    std::string dynCountOut = TrimRight(RunCommand(std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb -N -e \"SELECT dynamics FROM launcher LIMIT 1\" quarm"));
+    int dynCount = 0;
+    for (char c : dynCountOut) { if (isdigit(c)) dynCount = dynCount * 10 + (c - '0'); }
+
+    // Query active zones from spawn2 table (zones the server has content for)
+    std::string activeOut = RunCommand(std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb -N -e \""
+        L"SELECT s2.zone, z.long_name, z.zone_exp_multiplier, COUNT(DISTINCT s2.id) AS spawns "
+        L"FROM spawn2 s2 "
+        L"JOIN zone z ON z.short_name=s2.zone "
+        L"WHERE s2.enabled=1 "
+        L"GROUP BY s2.zone, z.long_name, z.zone_exp_multiplier "
+        L"ORDER BY z.long_name"
+        L"\" quarm");
+
+    std::vector<std::wstring> items;
+    int activeZones = 0;
+    std::istringstream ss(activeOut);
+    std::string line;
+    while (std::getline(ss, line)) {
+        line.erase(line.find_last_not_of(" \t\r\n") + 1);
+        if (line.empty()) continue;
+        // Parse tab-separated: short_name, long_name, zem, spawn_count
+        std::vector<std::string> cols;
+        std::istringstream ls(line);
+        std::string col;
+        while (std::getline(ls, col, '\t')) {
+            while (!col.empty() && (col.back() == ' ' || col.back() == '\r')) col.pop_back();
+            cols.push_back(col);
+        }
+        if (cols.size() < 2) continue;
+
+        std::wstring shortName = ToWide(cols[0]);
+        std::wstring longName  = cols.size() > 1 ? ToWide(cols[1]) : L"";
+        std::wstring zem       = cols.size() > 2 ? ToWide(cols[2]) : L"0";
+        std::wstring spawns    = cols.size() > 3 ? ToWide(cols[3]) : L"0";
+
+        // Tab-separated columns: Long Name | Short Name | Spawns | ZEM
+        std::wstring display = longName + L"\t" + shortName + L"\t" + spawns;
+        if (zem != L"0" && zem != L"0.00")
+            display += L"\t" + zem;
+        else
+            display += L"\t";
+
+        items.push_back(display);
+        activeZones++;
+    }
+
+    // Only redraw if content changed
+    bool changed = false;
+    int oldCount = (int)SendMessage(g_hwndZoneList, LB_GETCOUNT, 0, 0);
+    if (oldCount != (int)items.size()) {
+        changed = true;
+    } else {
+        for (int i = 0; i < oldCount && !changed; ++i) {
+            wchar_t existing[512] = {};
+            SendMessageW(g_hwndZoneList, LB_GETTEXT, i, (LPARAM)existing);
+            if (items[i] != existing) changed = true;
+        }
+    }
+    if (changed) {
+        SendMessage(g_hwndZoneList, LB_RESETCONTENT, 0, 0);
+        for (auto& item : items)
+            SendMessageW(g_hwndZoneList, LB_ADDSTRING, 0, (LPARAM)item.c_str());
+        if (items.empty())
+            SendMessageW(g_hwndZoneList, LB_ADDSTRING, 0, (LPARAM)L"(no active zones found)");
+    }
+
+    wchar_t buf[256];
+    swprintf_s(buf, L"%d zone processes, %d active zones with content, %d dynamic pool configured",
+        totalProcs, activeZones, dynCount);
+    if (g_hwndZoneResult) SetWindowTextW(g_hwndZoneResult, buf);
+    if (g_hwndStatusResult) SetWindowTextW(g_hwndStatusResult, buf);
+}
+
+static void DoStopZone() {
+    if (!CheckServerRunning(L"Stop Zone")) return;
+    std::wstring zoneName = ExtractZoneFromList();
+    if (zoneName.empty()) {
+        MessageBoxW(g_hwndMain, L"Select a zone from the Running Zones list.",
+            L"Stop Zone", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    int r = MessageBoxW(g_hwndMain,
+        (L"Stop all processes for zone '" + zoneName + L"'?").c_str(),
+        L"Confirm Stop Zone", MB_YESNO | MB_ICONQUESTION);
+    if (r != IDYES) return;
+    RunCommand(std::wstring(L"docker exec ") + CONTAINER +
+        L" sh -c \"ps -eo pid,args | grep '[z]one " + zoneName +
+        L"' | awk '{print $1}' | xargs -r kill\"");
+    if (g_hwndZoneResult) SetWindowTextW(g_hwndZoneResult,
+        (L"Killed zone process for '" + zoneName + L"'.").c_str());
+    Sleep(500);
+    DoRefreshZones();
+}
+
+static void DoRestartZone() {
+    if (!CheckServerRunning(L"Restart Zone")) return;
+    std::wstring zoneName = ExtractZoneFromList();
+    if (zoneName.empty()) {
+        MessageBoxW(g_hwndMain, L"Select a zone from the Running Zones list.",
+            L"Restart Zone", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    RunCommand(std::wstring(L"docker exec ") + CONTAINER +
+        L" sh -c \"ps -eo pid,args | grep '[z]one " + zoneName +
+        L"' | awk '{print $1}' | xargs -r kill\"");
+    if (g_hwndZoneResult) SetWindowTextW(g_hwndZoneResult,
+        (L"Restarting zone '" + zoneName + L"'. Will be re-served by dynamic pool.").c_str());
+    Sleep(2000);
+    DoRefreshZones();
+}
+
+static void DoStartZone() {
+    if (!CheckServerRunning(L"Start Zone")) return;
+    wchar_t zone[128] = {};
+    GetWindowTextW(g_hwndZoneStartEdit, zone, 128);
+    if (!zone[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a zone short name (e.g. 'commons', 'gfaydark').",
+            L"Start Zone", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    // Use eqlaunch-compatible method: start a zone process directly
+    std::wstring cmd = std::wstring(L"docker exec -d ") + CONTAINER +
+        L" /quarm/bin/zone " + std::wstring(zone);
+    RunCommand(cmd);
+    SetStatus((L"Starting zone: " + std::wstring(zone)).c_str());
+    Sleep(2000);
+    DoRefreshZones();
+}
+
+static void DoFindZoneStatus() {
+    if (!CheckServerRunning(L"Find Zone")) return;
+    wchar_t term[128] = {};
+    if (g_hwndZoneFindEdit) GetWindowTextW(g_hwndZoneFindEdit, term, 128);
+    if (!term[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a zone short name or partial name to search.",
+            L"Find Zone", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::wstring safe;
+    for (wchar_t c : std::wstring(term)) {
+        if (c == L'\'') safe += L"''";
+        else safe += c;
+    }
+    // Query zone info with an active/running indicator based on spawn2 content
+    std::wstring sql =
+        L"SELECT z.short_name, z.long_name, z.zoneidnumber, "
+        L"z.zone_exp_multiplier AS zem, "
+        L"CASE WHEN EXISTS(SELECT 1 FROM spawn2 s2 WHERE s2.zone=z.short_name AND s2.enabled=1) "
+        L"THEN 'ACTIVE' ELSE 'empty' END AS status "
+        L"FROM zone z "
+        L"WHERE z.short_name LIKE '%" + safe + L"%' OR z.long_name LIKE '%" + safe +
+        L"%' ORDER BY z.short_name LIMIT 30";
+    std::wstring result = RunQueryTable(sql);
+    if (g_hwndZoneResult)
+        SetWindowTextW(g_hwndZoneResult, (L"Zone Search:\r\n" + result).c_str());
+}
+
+// ============================================================
+// NEW OPERATIONS — Status Tab (Boss Management)
+// ============================================================
+
+static void DoCheckBoss() {
+    if (!CheckServerRunning(L"Check Boss")) return;
+    HWND cbo = GetDlgItem(g_hwndPanels[TAB_STATUS], IDC_SPAWN_BOSS_COMBO);
+    int sel = cbo ? (int)SendMessage(cbo, CB_GETCURSEL, 0, 0) : -1;
+    if (sel == CB_ERR || sel < 0 || sel >= BOSS_TABLE_COUNT) {
+        MessageBoxW(g_hwndMain, L"Select a boss from the dropdown.",
+            L"Check Boss", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    int npcId = BOSS_TABLE[sel].npcId;
+    const wchar_t* bossName = BOSS_TABLE[sel].name;
+    std::wstring sql =
+        L"SELECT se.spawngroupID, s2.zone, s2.enabled "
+        L"FROM spawnentry se "
+        L"JOIN spawn2 s2 ON s2.spawngroupID=se.spawngroupID "
+        L"WHERE se.npcID=" + std::to_wstring(npcId) + L" LIMIT 5";
+    std::wstring result = RunQueryTable(sql);
+    std::wstring msg = std::wstring(bossName) + L":\r\n" +
+        (result.find(L"(no results)") != std::wstring::npos
+            ? L"No spawn entry found in database."
+            : result);
+    if (g_hwndStatusResult)
+        SetWindowTextW(g_hwndStatusResult, msg.c_str());
+}
+
+static void DoDespawnBoss() {
+    if (!CheckServerRunning(L"Despawn Boss")) return;
+    HWND cbo = GetDlgItem(g_hwndPanels[TAB_STATUS], IDC_SPAWN_BOSS_COMBO);
+    int sel = cbo ? (int)SendMessage(cbo, CB_GETCURSEL, 0, 0) : -1;
+    if (sel == CB_ERR || sel < 0 || sel >= BOSS_TABLE_COUNT) {
+        MessageBoxW(g_hwndMain, L"Select a boss from the dropdown.",
+            L"Despawn Boss", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    int npcId = BOSS_TABLE[sel].npcId;
+    const wchar_t* bossName = BOSS_TABLE[sel].name;
+    const wchar_t* zone = BOSS_TABLE[sel].zone;
+    int r = MessageBoxW(g_hwndMain,
+        (L"Despawn " + std::wstring(bossName) + L"?\n\n"
+         L"This adds a respawn timer entry to prevent the boss from respawning\n"
+         L"and restarts the zone to remove the current NPC.").c_str(),
+        L"Confirm Despawn", MB_YESNO | MB_ICONQUESTION);
+    if (r != IDYES) return;
+    // Add respawn timer to suppress the spawn, then restart zone
+    RunQuery(L"INSERT IGNORE INTO respawn_times (id, start, duration) "
+             L"SELECT s2.id, UNIX_TIMESTAMP(), 999999 FROM spawn2 s2 "
+             L"JOIN spawnentry se ON se.spawngroupID=s2.spawngroupID "
+             L"WHERE se.npcID=" + std::to_wstring(npcId));
+    // Kill zones for that zone to force reload
+    RunCommand(std::wstring(L"docker exec ") + CONTAINER +
+        L" sh -c \"ps -eo pid,args | grep 'zone " + std::wstring(zone) +
+        L"' | grep -v grep | awk '{print $1}' | xargs -r kill\"");
+    if (g_hwndStatusResult)
+        SetWindowTextW(g_hwndStatusResult,
+            (std::wstring(bossName) + L" despawned. Zone '" + std::wstring(zone) + L"' reloading.").c_str());
+}
+
+static void DoListActiveBosses() {
+    if (!CheckServerRunning(L"List Bosses")) return;
+    // Check which bosses from our table have active spawn entries without respawn timers
+    std::wstring npcIds;
+    for (int i = 0; i < BOSS_TABLE_COUNT; ++i) {
+        if (i > 0) npcIds += L",";
+        npcIds += std::to_wstring(BOSS_TABLE[i].npcId);
+    }
+    std::wstring sql =
+        L"SELECT nt.name, s2.zone, "
+        L"CASE WHEN rt.id IS NULL THEN 'SPAWNABLE' ELSE 'ON TIMER' END AS status "
+        L"FROM spawnentry se "
+        L"JOIN npc_types nt ON nt.id=se.npcID "
+        L"JOIN spawn2 s2 ON s2.spawngroupID=se.spawngroupID "
+        L"LEFT JOIN respawn_times rt ON rt.id=s2.id "
+        L"WHERE se.npcID IN (" + npcIds + L") "
+        L"GROUP BY nt.name, s2.zone ORDER BY nt.name";
+    std::wstring result = RunQueryTable(sql);
+    if (g_hwndStatusResult)
+        SetWindowTextW(g_hwndStatusResult, (L"Boss Status:\r\n" + result).c_str());
+}
+
+// ============================================================
+// NEW OPERATIONS — Server Tab (Rules, XP, Guilds)
+// ============================================================
+
+static void DoLoadRules() {
+    if (!CheckServerRunning(L"Load Rules")) return;
+    std::wstring sql = L"SELECT rule_name, rule_value FROM rule_values ORDER BY rule_name";
+    std::string out = RunCommand(std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb -N -e \"" + sql + L"\" quarm");
+    g_rules.clear();
+    std::istringstream ss(out);
+    std::string line;
+    while (std::getline(ss, line)) {
+        line.erase(line.find_last_not_of(" \t\r\n") + 1);
+        if (line.empty()) continue;
+        auto tab = line.find('\t');
+        if (tab == std::string::npos) continue;
+        RuleInfo ri;
+        ri.name = ToWide(line.substr(0, tab));
+        ri.value = ToWide(line.substr(tab + 1));
+        ri.origValue = ri.value;
+        g_rules.push_back(ri);
+    }
+    // Apply search filter
+    wchar_t filterBuf[256] = {};
+    if (g_hwndRuleSearch) GetWindowTextW(g_hwndRuleSearch, filterBuf, 256);
+    std::wstring filter = filterBuf;
+    for (auto& c : filter) c = towlower(c);
+    g_rulesFiltered.clear();
+    SendMessage(g_hwndRuleList, LB_RESETCONTENT, 0, 0);
+    for (auto& r : g_rules) {
+        if (!filter.empty()) {
+            std::wstring nameLo = r.name;
+            for (auto& c : nameLo) c = towlower(c);
+            if (nameLo.find(filter) == std::wstring::npos) continue;
+        }
+        g_rulesFiltered.push_back(r);
+        std::wstring display = r.name + L" = " + r.value;
+        SendMessageW(g_hwndRuleList, LB_ADDSTRING, 0, (LPARAM)display.c_str());
+    }
+    wchar_t countBuf[64];
+    swprintf_s(countBuf, L"Loaded %d rules (%d shown)",
+        (int)g_rules.size(), (int)g_rulesFiltered.size());
+    if (g_hwndServerResult) SetWindowTextW(g_hwndServerResult, countBuf);
+    // Set XP and AA sliders from rules
+    for (auto& r : g_rules) {
+        if (r.name.find(L"Character:ExpMultiplier") != std::wstring::npos ||
+            r.name.find(L"Zone:ExpMultiplier") != std::wstring::npos) {
+            try {
+                double val = std::stod(std::string(r.value.begin(), r.value.end()));
+                int tick = (int)(val * 4.0 + 0.5);
+                if (tick < 4) tick = 4; if (tick > 40) tick = 40;
+                SendMessage(g_hwndXpSlider, TBM_SETPOS, TRUE, tick);
+                wchar_t buf[32]; swprintf_s(buf, L"%.2fx", tick / 4.0);
+                SetWindowTextW(g_hwndXpLabel, buf);
+            } catch (...) {}
+        }
+        if (r.name.find(L"AAExpMultiplier") != std::wstring::npos) {
+            try {
+                double val = std::stod(std::string(r.value.begin(), r.value.end()));
+                int tick = (int)(val * 4.0 + 0.5);
+                if (tick < 4) tick = 4; if (tick > 40) tick = 40;
+                SendMessage(g_hwndAaSlider, TBM_SETPOS, TRUE, tick);
+                wchar_t buf[32]; swprintf_s(buf, L"%.2fx", tick / 4.0);
+                SetWindowTextW(g_hwndAaLabel, buf);
+            } catch (...) {}
+        }
+    }
+}
+
+static void DoSaveRule() {
+    if (!CheckServerRunning(L"Save Rule")) return;
+    int sel = (int)SendMessage(g_hwndRuleList, LB_GETCURSEL, 0, 0);
+    if (sel == LB_ERR || sel >= (int)g_rulesFiltered.size()) {
+        MessageBoxW(g_hwndMain, L"Select a rule from the list first.",
+            L"Save Rule", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    wchar_t newVal[512] = {};
+    GetWindowTextW(g_hwndRuleValue, newVal, 512);
+    std::wstring safe;
+    for (wchar_t c : std::wstring(newVal)) {
+        if (c == L'\'') safe += L"''";
+        else safe += c;
+    }
+    std::wstring ruleName = g_rulesFiltered[sel].name;
+    RunQuery(L"UPDATE rule_values SET rule_value='" + safe +
+             L"' WHERE rule_name='" + ruleName + L"'");
+    g_rulesFiltered[sel].value = newVal;
+    // Update in master list too
+    for (auto& r : g_rules) {
+        if (r.name == ruleName) { r.value = newVal; break; }
+    }
+    if (g_hwndServerResult)
+        SetWindowTextW(g_hwndServerResult,
+            (L"Rule '" + ruleName + L"' set to: " + std::wstring(newVal)).c_str());
+}
+
+static void DoResetRule() {
+    if (!CheckServerRunning(L"Reset Rule")) return;
+    int sel = (int)SendMessage(g_hwndRuleList, LB_GETCURSEL, 0, 0);
+    if (sel == LB_ERR || sel >= (int)g_rulesFiltered.size()) {
+        MessageBoxW(g_hwndMain, L"Select a rule from the list first.",
+            L"Reset Rule", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::wstring ruleName = g_rulesFiltered[sel].name;
+    std::wstring origVal  = g_rulesFiltered[sel].origValue;
+    RunQuery(L"UPDATE rule_values SET rule_value='" + origVal +
+             L"' WHERE rule_name='" + ruleName + L"'");
+    g_rulesFiltered[sel].value = origVal;
+    for (auto& r : g_rules) {
+        if (r.name == ruleName) { r.value = origVal; break; }
+    }
+    SetWindowTextW(g_hwndRuleValue, origVal.c_str());
+    if (g_hwndServerResult)
+        SetWindowTextW(g_hwndServerResult,
+            (L"Rule '" + ruleName + L"' reset to original: " + origVal).c_str());
+}
+
+static void DoApplyXP() {
+    if (!CheckServerRunning(L"Apply XP Rate")) return;
+    int pos = (int)SendMessage(g_hwndXpSlider, TBM_GETPOS, 0, 0);
+    wchar_t valBuf[16];
+    swprintf_s(valBuf, L"%.2f", pos / 4.0);
+    std::wstring val = valBuf;
+    RunQuery(L"UPDATE rule_values SET rule_value='" + val +
+             L"' WHERE rule_name='Character:ExpMultiplier'");
+    RunQuery(L"UPDATE rule_values SET rule_value='" + val +
+             L"' WHERE rule_name='Zone:ExpMultiplier'");
+    if (g_hwndServerResult)
+        SetWindowTextW(g_hwndServerResult,
+            (L"XP multiplier set to " + val + L"x. Takes effect on next zone-in.").c_str());
+}
+
+static void DoApplyAA() {
+    if (!CheckServerRunning(L"Apply AA Rate")) return;
+    int pos = (int)SendMessage(g_hwndAaSlider, TBM_GETPOS, 0, 0);
+    wchar_t valBuf[16];
+    swprintf_s(valBuf, L"%.2f", pos / 4.0);
+    std::wstring val = valBuf;
+    RunQuery(L"UPDATE rule_values SET rule_value='" + val +
+             L"' WHERE rule_name='Zone:AAExpMultiplier'");
+    if (g_hwndServerResult)
+        SetWindowTextW(g_hwndServerResult,
+            (L"AA multiplier set to " + val + L"x. Takes effect on next zone-in.").c_str());
+}
+
+static void DoListGuilds() {
+    if (!CheckServerRunning(L"List Guilds")) return;
+    std::wstring sql =
+        L"SELECT g.id, g.name, IFNULL(cd.name,'(none)') AS leader "
+        L"FROM guilds g "
+        L"LEFT JOIN character_data cd ON cd.id=g.leader "
+        L"ORDER BY g.name";
+    std::wstring result = RunQueryTable(sql);
+    if (g_hwndServerResult) SetWindowTextW(g_hwndServerResult, result.c_str());
+}
+
+static void DoCreateGuild() {
+    if (!CheckServerRunning(L"Create Guild")) return;
+    wchar_t name[128] = {}, leader[128] = {};
+    GetWindowTextW(g_hwndGuildName, name, 128);
+    GetWindowTextW(g_hwndGuildLeader, leader, 128);
+    if (!name[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a guild name.", L"Create Guild", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    if (!leader[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a leader character name.", L"Create Guild", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::wstring sql =
+        L"INSERT INTO guilds (name, leader) VALUES ('" + std::wstring(name) +
+        L"', (SELECT id FROM character_data WHERE LOWER(name)=LOWER('" +
+        std::wstring(leader) + L"')))";
+    RunQuery(sql);
+    if (g_hwndServerResult)
+        SetWindowTextW(g_hwndServerResult,
+            (L"Guild '" + std::wstring(name) + L"' created with leader " +
+             std::wstring(leader) + L".").c_str());
+}
+
+static void DoDisbandGuild() {
+    if (!CheckServerRunning(L"Disband Guild")) return;
+    wchar_t name[128] = {};
+    GetWindowTextW(g_hwndGuildName, name, 128);
+    if (!name[0]) {
+        MessageBoxW(g_hwndMain, L"Enter the guild name to disband.", L"Disband", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    int r = MessageBoxW(g_hwndMain,
+        (L"Permanently disband guild '" + std::wstring(name) + L"'?\n\n"
+         L"All members will be removed.").c_str(),
+        L"Confirm Disband", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+    if (r != IDYES) return;
+    RunQuery(L"DELETE FROM guild_members WHERE guild_id=(SELECT id FROM guilds WHERE name='" +
+             std::wstring(name) + L"')");
+    RunQuery(L"DELETE FROM guilds WHERE name='" + std::wstring(name) + L"'");
+    if (g_hwndServerResult)
+        SetWindowTextW(g_hwndServerResult,
+            (L"Guild '" + std::wstring(name) + L"' disbanded.").c_str());
+}
+
+static void DoViewRoster() {
+    if (!CheckServerRunning(L"View Roster")) return;
+    wchar_t name[128] = {};
+    GetWindowTextW(g_hwndGuildName, name, 128);
+    if (!name[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a guild name.", L"View Roster", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::wstring sql =
+        L"SELECT cd.name, gm.rank FROM guild_members gm "
+        L"JOIN character_data cd ON cd.id=gm.char_id "
+        L"WHERE gm.guild_id=(SELECT id FROM guilds WHERE name='" +
+        std::wstring(name) + L"') ORDER BY gm.rank, cd.name";
+    std::wstring result = RunQueryTable(sql);
+    if (g_hwndServerResult) SetWindowTextW(g_hwndServerResult, result.c_str());
+}
+
+static void DoSetGuildLeader() {
+    if (!CheckServerRunning(L"Set Guild Leader")) return;
+    wchar_t name[128] = {}, leader[128] = {};
+    GetWindowTextW(g_hwndGuildName, name, 128);
+    GetWindowTextW(g_hwndGuildLeader, leader, 128);
+    if (!name[0] || !leader[0]) {
+        MessageBoxW(g_hwndMain, L"Enter both guild name and new leader name.",
+            L"Set Leader", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    RunQuery(L"UPDATE guilds SET leader=(SELECT id FROM character_data WHERE LOWER(name)=LOWER('" +
+             std::wstring(leader) + L"')) WHERE name='" + std::wstring(name) + L"'");
+    if (g_hwndServerResult)
+        SetWindowTextW(g_hwndServerResult,
+            (L"Guild leader set to " + std::wstring(leader) + L".").c_str());
+}
+
+// ============================================================
+// NEW OPERATIONS — Pro Tools (Spawn, Spells, Factions, Skills)
+// ============================================================
+
+static void DoSpawnBoss() {
+    if (!CheckServerRunning(L"Spawn Boss")) return;
+    HWND cbo = GetDlgItem(g_hwndPanels[TAB_STATUS], IDC_SPAWN_BOSS_COMBO);
+    int sel = cbo ? (int)SendMessage(cbo, CB_GETCURSEL, 0, 0) : -1;
+    if (sel == CB_ERR || sel < 0 || sel >= BOSS_TABLE_COUNT) {
+        MessageBoxW(g_hwndMain, L"Select a boss from the dropdown.",
+            L"Spawn Boss", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    int npcId = BOSS_TABLE[sel].npcId;
+    const wchar_t* bossName = BOSS_TABLE[sel].name;
+    const wchar_t* zone = BOSS_TABLE[sel].zone;
+    int r = MessageBoxW(g_hwndMain,
+        (std::wstring(L"Spawn ") + bossName + L" in " + zone + L"?\n\n"
+         L"A temporary spawn entry will be created and the zone reloaded.").c_str(),
+        L"Confirm Spawn", MB_YESNO | MB_ICONQUESTION);
+    if (r != IDYES) return;
+    SetBusy(true);
+    SetStatus(L"Spawning boss...");
+    int capturedNpcId = npcId;
+    std::wstring capturedZone = zone;
+    std::wstring capturedName = bossName;
+    std::thread([capturedNpcId, capturedZone, capturedName]{
+        // Insert temp spawngroup + spawnentry + spawn2
+        RunQuery(L"INSERT IGNORE INTO spawngroup (id, name) VALUES (999990, 'QSM_TEMP_BOSS')");
+        RunQuery(L"DELETE FROM spawnentry WHERE spawngroupID=999990");
+        RunQuery(L"INSERT INTO spawnentry (spawngroupID, npcID, chance) VALUES (999990, " +
+                 std::to_wstring(capturedNpcId) + L", 100)");
+        RunQuery(L"DELETE FROM spawn2 WHERE spawngroupID=999990");
+        RunQuery(L"INSERT INTO spawn2 (spawngroupID, zone, x, y, z, respawntime, variance) VALUES "
+                 L"(999990, '" + capturedZone + L"', 0, 0, 5, 1200, 0)");
+        // Restart zone processes to pick up the new spawn
+        RunCommand(std::wstring(L"docker exec ") + CONTAINER + L" killall zone");
+        Sleep(3000);
+        auto* res = new AsyncResult{ true,
+            capturedName + L" spawned in " + capturedZone + L".\r\n"
+            L"The spawn entry (group 999990) will persist until cleaned up." };
+        PostMessageW(g_hwndMain, WM_ASYNC_DONE, TAB_GAME, (LPARAM)res);
+    }).detach();
+}
+
+static void DoSpellSearch() {
+    if (!CheckServerRunning(L"Spell Search")) return;
+    wchar_t term[256] = {};
+    if (g_hwndSpellSearch) GetWindowTextW(g_hwndSpellSearch, term, 256);
+    if (!term[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a spell name to search.",
+            L"Spell Search", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::wstring safe;
+    for (wchar_t c : std::wstring(term)) {
+        if (c == L'\'') safe += L"''";
+        else safe += c;
+    }
+    std::wstring sql =
+        L"SELECT id, name FROM spells_new WHERE name LIKE '%" + safe +
+        L"%' ORDER BY name LIMIT 100";
+    std::string out = RunCommand(std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb -N -e \"" + sql + L"\" quarm");
+    SendMessage(g_hwndSpellList, LB_RESETCONTENT, 0, 0);
+    int count = 0;
+    std::istringstream ss(out);
+    std::string line;
+    while (std::getline(ss, line)) {
+        line.erase(line.find_last_not_of(" \t\r\n") + 1);
+        if (line.empty()) continue;
+        std::wstring wide = ToWide(line);
+        // Replace tab with ": "
+        auto tab = wide.find(L'\t');
+        if (tab != std::wstring::npos) wide.replace(tab, 1, L": ");
+        SendMessageW(g_hwndSpellList, LB_ADDSTRING, 0, (LPARAM)wide.c_str());
+        count++;
+    }
+    wchar_t buf[64]; swprintf_s(buf, L"Found %d spells.", count);
+    SetGameResult(buf);
+}
+
+static void DoScribeSpell() {
+    if (!CheckServerRunning(L"Scribe Spell")) return;
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndProCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name in the Character field.",
+            L"Scribe Spell", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    int sel = (int)SendMessage(g_hwndSpellList, LB_GETCURSEL, 0, 0);
+    if (sel == LB_ERR) {
+        MessageBoxW(g_hwndMain, L"Select a spell from the search results.",
+            L"Scribe Spell", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    wchar_t item[512] = {};
+    SendMessageW(g_hwndSpellList, LB_GETTEXT, sel, (LPARAM)item);
+    // Extract spell ID (everything before ":")
+    std::wstring spellStr = item;
+    auto colon = spellStr.find(L':');
+    if (colon == std::wstring::npos) return;
+    std::wstring spellId = spellStr.substr(0, colon);
+    // Trim whitespace
+    while (!spellId.empty() && spellId.back() == L' ') spellId.pop_back();
+
+    if (IsCharacterOnline(chr) == 1) {
+        MessageBoxW(g_hwndMain, L"Character must be offline to scribe spells.",
+            L"Character Online", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    // Find next slot
+    std::wstring slotSql =
+        L"SELECT IFNULL(MAX(slot_id)+1, 0) FROM character_spells "
+        L"WHERE id=(SELECT id FROM character_data WHERE LOWER(name)=LOWER('" +
+        std::wstring(chr) + L"'))";
+    std::string slotOut = TrimRight(RunCommand(std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb -N -e \"" + slotSql + L"\" quarm"));
+    std::wstring slot = ToWide(slotOut);
+    // Trim whitespace
+    while (!slot.empty() && (slot.back() == L'\n' || slot.back() == L'\r' || slot.back() == L' '))
+        slot.pop_back();
+    if (slot.empty()) slot = L"0";
+
+    RunQuery(L"INSERT INTO character_spells (id, slot_id, spell_id) VALUES ("
+             L"(SELECT id FROM character_data WHERE LOWER(name)=LOWER('" +
+             std::wstring(chr) + L"')), " + slot + L", " + spellId + L")");
+    SetGameResult((L"Scribed spell " + spellStr + L" to " + std::wstring(chr) +
+                   L" at slot " + slot + L".").c_str());
+}
+
+static void DoScribeAll() {
+    if (!CheckServerRunning(L"Scribe All")) return;
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndProCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name.", L"Scribe All", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    int count = (int)SendMessage(g_hwndSpellList, LB_GETCOUNT, 0, 0);
+    if (count <= 0) {
+        MessageBoxW(g_hwndMain, L"No spells in search results.", L"Scribe All", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    if (IsCharacterOnline(chr) == 1) {
+        MessageBoxW(g_hwndMain, L"Character must be offline.", L"Character Online", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    int r = MessageBoxW(g_hwndMain,
+        (L"Scribe all " + std::to_wstring(count) + L" spells to " + std::wstring(chr) + L"?").c_str(),
+        L"Confirm Scribe All", MB_YESNO | MB_ICONQUESTION);
+    if (r != IDYES) return;
+    int scribed = 0;
+    for (int i = 0; i < count; ++i) {
+        wchar_t item[512] = {};
+        SendMessageW(g_hwndSpellList, LB_GETTEXT, i, (LPARAM)item);
+        std::wstring spellStr = item;
+        auto colon = spellStr.find(L':');
+        if (colon == std::wstring::npos) continue;
+        std::wstring spellId = spellStr.substr(0, colon);
+        while (!spellId.empty() && spellId.back() == L' ') spellId.pop_back();
+        RunQuery(L"INSERT IGNORE INTO character_spells (id, slot_id, spell_id) VALUES ("
+                 L"(SELECT id FROM character_data WHERE LOWER(name)=LOWER('" +
+                 std::wstring(chr) + L"')), " + std::to_wstring(200 + i) + L", " + spellId + L")");
+        scribed++;
+    }
+    wchar_t buf[128]; swprintf_s(buf, L"Scribed %d spells to %s.", scribed, chr);
+    SetGameResult(buf);
+}
+
+static void DoLoadFactions() {
+    if (!CheckServerRunning(L"Load Factions")) return;
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndPlrCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name.", L"Load Factions", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::wstring sql =
+        L"SELECT cf.faction_id, fl.name, cf.current_value "
+        L"FROM character_faction_values cf "
+        L"LEFT JOIN faction_list fl ON fl.id=cf.faction_id "
+        L"WHERE cf.id=(SELECT id FROM character_data WHERE LOWER(name)=LOWER('" +
+        std::wstring(chr) + L"')) ORDER BY fl.name LIMIT 200";
+    std::string out = RunCommand(std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb -N -e \"" + sql + L"\" quarm");
+    SendMessage(g_hwndFactionList, LB_RESETCONTENT, 0, 0);
+    int count = 0;
+    std::istringstream ss(out);
+    std::string line;
+    while (std::getline(ss, line)) {
+        line.erase(line.find_last_not_of(" \t\r\n") + 1);
+        if (line.empty()) continue;
+        std::wstring wide = ToWide(line);
+        // Replace tabs with " | "
+        std::wstring display;
+        for (auto c : wide) {
+            if (c == L'\t') display += L" | ";
+            else display += c;
+        }
+        SendMessageW(g_hwndFactionList, LB_ADDSTRING, 0, (LPARAM)display.c_str());
+        count++;
+    }
+    wchar_t buf[64]; swprintf_s(buf, L"Loaded %d faction entries for %s.", count, chr);
+    SetPlrResult(buf);
+}
+
+static void DoSetFaction(int presetValue = -99999) {
+    if (!CheckServerRunning(L"Set Faction")) return;
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndPlrCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name.", L"Set Faction", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    int sel = (int)SendMessage(g_hwndFactionList, LB_GETCURSEL, 0, 0);
+    if (sel == LB_ERR) {
+        MessageBoxW(g_hwndMain, L"Select a faction from the list.",
+            L"Set Faction", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    wchar_t item[512] = {};
+    SendMessageW(g_hwndFactionList, LB_GETTEXT, sel, (LPARAM)item);
+    // Extract faction_id (first number before " | ")
+    std::wstring str = item;
+    auto pipe = str.find(L" | ");
+    if (pipe == std::wstring::npos) return;
+    std::wstring factionId = str.substr(0, pipe);
+
+    int newValue = presetValue;
+    if (presetValue == -99999) {
+        wchar_t valBuf[64] = {};
+        GetWindowTextW(g_hwndFactionValue, valBuf, 64);
+        if (!valBuf[0]) {
+            MessageBoxW(g_hwndMain, L"Enter a faction value or use a preset button.",
+                L"Faction", MB_OK | MB_ICONINFORMATION);
+            return;
+        }
+        newValue = _wtoi(valBuf);
+    }
+    RunQuery(L"UPDATE character_faction_values SET current_value=" +
+             std::to_wstring(newValue) +
+             L" WHERE id=(SELECT id FROM character_data WHERE LOWER(name)=LOWER('" +
+             std::wstring(chr) + L"')) AND faction_id=" + factionId);
+    SetPlrResult((L"Faction " + factionId + L" set to " +
+                   std::to_wstring(newValue) + L" for " + std::wstring(chr) + L".").c_str());
+}
+
+static void DoMaxSkills() {
+    if (!CheckServerRunning(L"Max Skills")) return;
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndProCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name in the Character field.",
+            L"Max Skills", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    if (IsCharacterOnline(chr) == 1) {
+        MessageBoxW(g_hwndMain, L"Character must be offline.",
+            L"Character Online", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    int r = MessageBoxW(g_hwndMain,
+        (L"Max all skills for '" + std::wstring(chr) +
+         L"'?\n\nThis sets all combat, casting, trade, and language skills to maximum.").c_str(),
+        L"Confirm Max Skills", MB_YESNO | MB_ICONQUESTION);
+    if (r != IDYES) return;
+    std::wstring charIdSql = L"(SELECT id FROM character_data WHERE LOWER(name)=LOWER('" +
+        std::wstring(chr) + L"'))";
+    RunQuery(L"UPDATE character_skills SET value=252 WHERE id=" + charIdSql);
+    RunQuery(L"UPDATE character_languages SET value=100 WHERE id=" + charIdSql);
+    SetGameResult((L"All skills and languages maxed for '" + std::wstring(chr) +
+                   L"'. Log in to see changes.").c_str());
+}
+
+// ============================================================
+// NEW OPERATIONS — Player Tools (Loot Viewer)
+// ============================================================
+
+static void DoLootByNPC() {
+    if (!CheckServerRunning(L"Loot Lookup")) return;
+    wchar_t term[256] = {};
+    if (g_hwndLootSearch) GetWindowTextW(g_hwndLootSearch, term, 256);
+    if (!term[0]) {
+        MessageBoxW(g_hwndMain, L"Enter an NPC name to search.",
+            L"Loot Lookup", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::wstring safe;
+    for (wchar_t c : std::wstring(term)) {
+        if (c == L'\'') safe += L"''";
+        else safe += c;
+    }
+    std::wstring sql =
+        L"SELECT nt.name AS npc, it.Name AS item, ROUND(lde.chance,1) AS pct "
+        L"FROM npc_types nt "
+        L"JOIN loottable_entries lte ON lte.loottable_id=nt.loottable_id "
+        L"JOIN lootdrop_entries lde ON lde.lootdrop_id=lte.lootdrop_id "
+        L"JOIN items it ON it.id=lde.item_id "
+        L"WHERE nt.name LIKE '%" + safe + L"%' "
+        L"ORDER BY nt.name, lde.chance DESC LIMIT 200";
+    SetGameResult(L"Loot by NPC results:\r\n\r\n" + RunQueryTable(sql));
+}
+
+static void DoLootByItem() {
+    if (!CheckServerRunning(L"Loot Lookup")) return;
+    wchar_t term[256] = {};
+    if (g_hwndLootSearch) GetWindowTextW(g_hwndLootSearch, term, 256);
+    if (!term[0]) {
+        MessageBoxW(g_hwndMain, L"Enter an item name to search.",
+            L"Loot Lookup", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::wstring safe;
+    for (wchar_t c : std::wstring(term)) {
+        if (c == L'\'') safe += L"''";
+        else safe += c;
+    }
+    std::wstring sql =
+        L"SELECT it.Name AS item, nt.name AS dropped_by, ROUND(lde.chance,1) AS pct "
+        L"FROM items it "
+        L"JOIN lootdrop_entries lde ON lde.item_id=it.id "
+        L"JOIN loottable_entries lte ON lte.lootdrop_id=lde.lootdrop_id "
+        L"JOIN npc_types nt ON nt.loottable_id=lte.loottable_id "
+        L"WHERE it.Name LIKE '%" + safe + L"%' "
+        L"ORDER BY it.Name, lde.chance DESC LIMIT 200";
+    SetGameResult(L"Loot by Item results:\r\n\r\n" + RunQueryTable(sql));
+}
+
+// ============================================================
+// NEW OPERATIONS — Pro Tools (Skills)
+// ============================================================
+
+static void DoSkillSearch() {
+    if (!CheckServerRunning(L"Skill Search")) return;
+    wchar_t term[256] = {};
+    if (g_hwndSkillSearch) GetWindowTextW(g_hwndSkillSearch, term, 256);
+    if (!term[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a skill name to search (e.g. 'kick', '1h', 'swim').",
+            L"Skill Search", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::wstring safe;
+    for (wchar_t c : std::wstring(term)) {
+        if (c == L'\'') safe += L"''";
+        else safe += c;
+    }
+    // skill_caps has skill_id; we need the name from a known table or just show IDs
+    // EQEmu uses numeric skill IDs; search skill_caps for matching descriptions
+    std::wstring sql =
+        L"SELECT DISTINCT sc.skill_id, "
+        L"CASE sc.skill_id "
+        L"WHEN 0 THEN '1H Blunt' WHEN 1 THEN '1H Slashing' WHEN 2 THEN '2H Blunt' "
+        L"WHEN 3 THEN '2H Slashing' WHEN 4 THEN 'Abjuration' WHEN 5 THEN 'Alteration' "
+        L"WHEN 6 THEN 'Apply Poison' WHEN 7 THEN 'Archery' WHEN 8 THEN 'Backstab' "
+        L"WHEN 9 THEN 'Bind Wound' WHEN 10 THEN 'Bash' WHEN 11 THEN 'Block' "
+        L"WHEN 12 THEN 'Brass Instruments' WHEN 13 THEN 'Channeling' WHEN 14 THEN 'Conjuration' "
+        L"WHEN 15 THEN 'Defense' WHEN 16 THEN 'Disarm' WHEN 17 THEN 'Disarm Traps' "
+        L"WHEN 18 THEN 'Divination' WHEN 19 THEN 'Dodge' WHEN 20 THEN 'Double Attack' "
+        L"WHEN 21 THEN 'Dragon Punch' WHEN 22 THEN 'Dual Wield' WHEN 23 THEN 'Eagle Strike' "
+        L"WHEN 24 THEN 'Evocation' WHEN 25 THEN 'Feign Death' WHEN 26 THEN 'Flying Kick' "
+        L"WHEN 27 THEN 'Forage' WHEN 28 THEN 'Hand to Hand' WHEN 29 THEN 'Hide' "
+        L"WHEN 30 THEN 'Kick' WHEN 31 THEN 'Meditate' WHEN 32 THEN 'Mend' "
+        L"WHEN 33 THEN 'Offense' WHEN 34 THEN 'Parry' WHEN 35 THEN 'Pick Lock' "
+        L"WHEN 36 THEN 'Piercing' WHEN 37 THEN 'Riposte' WHEN 38 THEN 'Round Kick' "
+        L"WHEN 39 THEN 'Safe Fall' WHEN 40 THEN 'Sense Heading' WHEN 41 THEN 'Singing' "
+        L"WHEN 42 THEN 'Sneak' WHEN 43 THEN 'Specialize Abjure' WHEN 44 THEN 'Specialize Alteration' "
+        L"WHEN 45 THEN 'Specialize Conjuration' WHEN 46 THEN 'Specialize Divination' "
+        L"WHEN 47 THEN 'Specialize Evocation' WHEN 48 THEN 'Swimming' WHEN 49 THEN 'Throwing' "
+        L"WHEN 50 THEN 'Tiger Claw' WHEN 51 THEN 'Tracking' WHEN 52 THEN 'Wind Instruments' "
+        L"WHEN 53 THEN 'Fishing' WHEN 54 THEN 'Make Poison' WHEN 55 THEN 'Tinkering' "
+        L"WHEN 56 THEN 'Research' WHEN 57 THEN 'Alchemy' WHEN 58 THEN 'Baking' "
+        L"WHEN 59 THEN 'Tailoring' WHEN 60 THEN 'Sense Traps' WHEN 61 THEN 'Blacksmithing' "
+        L"WHEN 62 THEN 'Fletching' WHEN 63 THEN 'Brewing' WHEN 64 THEN 'Alcohol Tolerance' "
+        L"WHEN 65 THEN 'Begging' WHEN 66 THEN 'Jewelry Making' WHEN 67 THEN 'Pottery' "
+        L"WHEN 68 THEN 'Percussion Instruments' WHEN 69 THEN 'Intimidation' "
+        L"WHEN 70 THEN 'Berserking' WHEN 71 THEN 'Taunt' WHEN 72 THEN 'Frenzy' "
+        L"WHEN 73 THEN 'Remove Traps' WHEN 74 THEN 'Triple Attack' "
+        L"ELSE CONCAT('Skill ', sc.skill_id) END AS skill_name "
+        L"FROM skill_caps sc "
+        L"HAVING skill_name LIKE '%" + safe + L"%' "
+        L"ORDER BY skill_name LIMIT 100";
+    std::string out = RunCommand(std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb -N -e \"" + sql + L"\" quarm");
+    SendMessage(g_hwndSkillList, LB_RESETCONTENT, 0, 0);
+    int count = 0;
+    std::istringstream ss(out);
+    std::string line;
+    while (std::getline(ss, line)) {
+        line.erase(line.find_last_not_of(" \t\r\n") + 1);
+        if (line.empty()) continue;
+        std::wstring wide = ToWide(line);
+        auto tab = wide.find(L'\t');
+        if (tab != std::wstring::npos) wide.replace(tab, 1, L": ");
+        SendMessageW(g_hwndSkillList, LB_ADDSTRING, 0, (LPARAM)wide.c_str());
+        count++;
+    }
+    wchar_t buf[64]; swprintf_s(buf, L"Found %d skills.", count);
+    SetGameResult(buf);
+}
+
+static void DoLoadSkills() {
+    if (!CheckServerRunning(L"Load Skills")) return;
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndProCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name.",
+            L"Load Skills", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::wstring sql =
+        L"SELECT cs.skill_id, cs.value FROM character_skills cs "
+        L"WHERE cs.id=(SELECT id FROM character_data WHERE LOWER(name)=LOWER('" +
+        std::wstring(chr) + L"')) AND cs.value > 0 ORDER BY cs.skill_id";
+    std::string out = RunCommand(std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb -N -e \"" + sql + L"\" quarm");
+    SendMessage(g_hwndSkillList, LB_RESETCONTENT, 0, 0);
+    int count = 0;
+    std::istringstream ss(out);
+    std::string line;
+    while (std::getline(ss, line)) {
+        line.erase(line.find_last_not_of(" \t\r\n") + 1);
+        if (line.empty()) continue;
+        std::wstring wide = ToWide(line);
+        auto tab = wide.find(L'\t');
+        if (tab != std::wstring::npos) wide.replace(tab, 1, L" = ");
+        SendMessageW(g_hwndSkillList, LB_ADDSTRING, 0, (LPARAM)wide.c_str());
+        count++;
+    }
+    wchar_t buf[64]; swprintf_s(buf, L"Loaded %d skills for %s.", count, chr);
+    SetGameResult(buf);
+}
+
+static void DoSetSkill() {
+    if (!CheckServerRunning(L"Set Skill")) return;
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndProCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name.",
+            L"Set Skill", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    int sel = (int)SendMessage(g_hwndSkillList, LB_GETCURSEL, 0, 0);
+    if (sel == LB_ERR) {
+        MessageBoxW(g_hwndMain, L"Select a skill from the list.",
+            L"Set Skill", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    wchar_t valBuf[64] = {};
+    GetWindowTextW(g_hwndSkillValue, valBuf, 64);
+    if (!valBuf[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a skill value.",
+            L"Set Skill", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    wchar_t item[512] = {};
+    SendMessageW(g_hwndSkillList, LB_GETTEXT, sel, (LPARAM)item);
+    // Extract skill ID (number before ":" or " = ")
+    std::wstring str = item;
+    std::wstring skillId;
+    for (auto c : str) {
+        if (iswdigit(c)) skillId += c;
+        else break;
+    }
+    if (skillId.empty()) return;
+    int newVal = _wtoi(valBuf);
+    if (IsCharacterOnline(chr) == 1) {
+        MessageBoxW(g_hwndMain, L"Character must be offline.",
+            L"Character Online", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    // Upsert skill
+    RunQuery(L"INSERT INTO character_skills (id, skill_id, value) VALUES ("
+             L"(SELECT id FROM character_data WHERE LOWER(name)=LOWER('" +
+             std::wstring(chr) + L"')), " + skillId + L", " + std::to_wstring(newVal) +
+             L") ON DUPLICATE KEY UPDATE value=" + std::to_wstring(newVal));
+    SetGameResult((L"Skill " + skillId + L" set to " + std::to_wstring(newVal) +
+                   L" for " + std::wstring(chr) + L".").c_str());
+}
+
+// ============================================================
+// NEW OPERATIONS — Admin Tools (GM/GodMode)
+// ============================================================
+
+static void DoToggleGM() {
+    if (!CheckServerRunning(L"Toggle GM")) return;
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndAdmGMChar, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name.", L"Toggle GM", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    // Check account has GM status
+    std::wstring checkSql =
+        L"SELECT a.status FROM account a JOIN character_data cd ON cd.account_id=a.id "
+        L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"')";
+    std::string statusOut = TrimRight(RunCommand(std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb -N -e \"" + checkSql + L"\" quarm"));
+    if (statusOut.empty() || statusOut.find("255") == std::string::npos) {
+        SetAdmResult(L"Account for '" + std::wstring(chr) + L"' does not have GM status (255). Set GM first via Make GM.");
+        return;
+    }
+    // Toggle gm flag: if gm=0, set to 1; if gm>0, set to 0
+    std::wstring sql =
+        L"UPDATE character_data SET gm = IF(gm=0, 1, 0) "
+        L"WHERE LOWER(name)=LOWER('" + std::wstring(chr) + L"')";
+    RunQuery(sql);
+    std::wstring result = RunQueryTable(
+        L"SELECT name, gm FROM character_data WHERE LOWER(name)=LOWER('" +
+        std::wstring(chr) + L"')");
+    SetAdmResult(L"GM flag toggled for '" + std::wstring(chr) + L"'.\r\n\r\n" + result +
+                 L"\r\nCharacter must relog for change to take effect.");
+}
+
+static void DoToggleGodMode() {
+    if (!CheckServerRunning(L"Toggle God Mode")) return;
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndAdmGMChar, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name.", L"Toggle God Mode", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::wstring checkSql =
+        L"SELECT a.status FROM account a JOIN character_data cd ON cd.account_id=a.id "
+        L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"')";
+    std::string statusOut = TrimRight(RunCommand(std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb -N -e \"" + checkSql + L"\" quarm"));
+    if (statusOut.empty() || statusOut.find("255") == std::string::npos) {
+        SetAdmResult(L"Account for '" + std::wstring(chr) + L"' does not have GM status (255).");
+        return;
+    }
+    // Toggle invulnerable flag
+    RunQuery(L"UPDATE character_data SET invulnerable = IF(invulnerable=0, 1, 0) "
+             L"WHERE LOWER(name)=LOWER('" + std::wstring(chr) + L"')");
+    std::wstring result = RunQueryTable(
+        L"SELECT name, invulnerable AS godmode FROM character_data WHERE LOWER(name)=LOWER('" +
+        std::wstring(chr) + L"')");
+    SetAdmResult(L"God Mode toggled for '" + std::wstring(chr) + L"'.\r\n\r\n" + result +
+                 L"\r\nCharacter must relog for change to take effect.");
+}
+
+// ============================================================
+// NEW OPERATIONS — Server Tab (Weather)
+// ============================================================
+
+static void DoEnvLoad() {
+    if (!CheckServerRunning(L"Load Zone")) return;
+    wchar_t zone[128] = {};
+    GetWindowTextW(g_hwndEnvZoneEdit, zone, 128);
+    if (!zone[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a zone short name (e.g. 'commons').",
+            L"Load Zone", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::wstring safe;
+    for (wchar_t c : std::wstring(zone)) { if (c==L'\'') safe+=L"''"; else safe+=c; }
+    std::wstring sql =
+        L"SELECT weather, fog_minclip, fog_maxclip, fog_density, "
+        L"fog_red, fog_green, fog_blue, minclip, maxclip "
+        L"FROM zone WHERE short_name='" + safe + L"' LIMIT 1";
+    std::string out = TrimRight(RunCommand(std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb -N -e \"" + sql + L"\" quarm"));
+    if (out.empty()) {
+        if (g_hwndZoneResult)
+            SetWindowTextW(g_hwndZoneResult, (L"Zone '" + std::wstring(zone) + L"' not found.").c_str());
+        return;
+    }
+    // Parse tab-separated: weather, fog_minclip, fog_maxclip, fog_density, fog_r, fog_g, fog_b, minclip, maxclip
+    std::istringstream ss(out);
+    std::string vals[9];
+    for (int i = 0; i < 9 && ss; ++i) {
+        if (i < 8) std::getline(ss, vals[i], '\t');
+        else std::getline(ss, vals[i]);
+    }
+    SendMessage(g_hwndEnvWeatherCbo, CB_SETCURSEL, std::atoi(vals[0].c_str()), 0);
+    SetWindowTextW(g_hwndEnvFogMin, ToWide(vals[1]).c_str());
+    SetWindowTextW(g_hwndEnvFogMax, ToWide(vals[2]).c_str());
+    SetWindowTextW(g_hwndEnvFogDensity, ToWide(vals[3]).c_str());
+    SetWindowTextW(g_hwndEnvFogR, ToWide(vals[4]).c_str());
+    SetWindowTextW(g_hwndEnvFogG, ToWide(vals[5]).c_str());
+    SetWindowTextW(g_hwndEnvFogB, ToWide(vals[6]).c_str());
+    SetWindowTextW(g_hwndEnvClipMin, ToWide(vals[7]).c_str());
+    SetWindowTextW(g_hwndEnvClipMax, ToWide(vals[8]).c_str());
+    if (g_hwndZoneResult)
+        SetWindowTextW(g_hwndZoneResult,
+            (L"Loaded environment for '" + std::wstring(zone) + L"'.").c_str());
+}
+
+static void DoEnvSave() {
+    if (!CheckServerRunning(L"Save Zone")) return;
+    wchar_t zone[128] = {};
+    GetWindowTextW(g_hwndEnvZoneEdit, zone, 128);
+    if (!zone[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a zone short name first.",
+            L"Save Zone", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    // Read all fields
+    wchar_t fogMin[32]={}, fogMax[32]={}, fogDen[32]={}, fogR[16]={}, fogG[16]={}, fogB[16]={};
+    wchar_t clipMin[32]={}, clipMax[32]={};
+    GetWindowTextW(g_hwndEnvFogMin, fogMin, 32);
+    GetWindowTextW(g_hwndEnvFogMax, fogMax, 32);
+    GetWindowTextW(g_hwndEnvFogDensity, fogDen, 32);
+    GetWindowTextW(g_hwndEnvFogR, fogR, 16);
+    GetWindowTextW(g_hwndEnvFogG, fogG, 16);
+    GetWindowTextW(g_hwndEnvFogB, fogB, 16);
+    GetWindowTextW(g_hwndEnvClipMin, clipMin, 32);
+    GetWindowTextW(g_hwndEnvClipMax, clipMax, 32);
+    int weather = (int)SendMessage(g_hwndEnvWeatherCbo, CB_GETCURSEL, 0, 0);
+    if (weather == CB_ERR) weather = 0;
+
+    std::wstring safe;
+    for (wchar_t c : std::wstring(zone)) { if (c==L'\'') safe+=L"''"; else safe+=c; }
+    RunQuery(L"UPDATE zone SET "
+             L"weather=" + std::to_wstring(weather) +
+             L", fog_minclip=" + (fogMin[0]?fogMin:L"0") +
+             L", fog_maxclip=" + (fogMax[0]?fogMax:L"0") +
+             L", fog_density=" + (fogDen[0]?fogDen:L"0") +
+             L", fog_red=" + (fogR[0]?fogR:L"0") +
+             L", fog_green=" + (fogG[0]?fogG:L"0") +
+             L", fog_blue=" + (fogB[0]?fogB:L"0") +
+             L", minclip=" + (clipMin[0]?clipMin:L"0") +
+             L", maxclip=" + (clipMax[0]?clipMax:L"0") +
+             L" WHERE short_name='" + safe + L"'");
+    if (g_hwndZoneResult)
+        SetWindowTextW(g_hwndZoneResult,
+            (L"Zone environment saved for '" + std::wstring(zone) +
+             L"'. Restart the zone for changes to take effect.").c_str());
+}
+
+// Helper: extract zone short_name from list item (second column, after first tab)
+static std::wstring ExtractZoneFromList() {
+    int sel = (int)SendMessage(g_hwndZoneList, LB_GETCURSEL, 0, 0);
+    if (sel == LB_ERR) return L"";
+    wchar_t item[512] = {};
+    SendMessageW(g_hwndZoneList, LB_GETTEXT, sel, (LPARAM)item);
+    std::wstring str = item;
+    // Format: "Long Name\tshort_name\tspawns\tzem"
+    auto tab1 = str.find(L'\t');
+    if (tab1 == std::wstring::npos) return L"";
+    auto tab2 = str.find(L'\t', tab1 + 1);
+    std::wstring zoneName = str.substr(tab1 + 1, (tab2 != std::wstring::npos) ? tab2 - tab1 - 1 : std::wstring::npos);
+    // Trim whitespace
+    while (!zoneName.empty() && zoneName.back() == L' ') zoneName.pop_back();
+    while (!zoneName.empty() && zoneName.front() == L' ') zoneName.erase(zoneName.begin());
+    return zoneName;
+}
+
+static void DoLoadZem() {
+    if (!CheckServerRunning(L"Load ZEM")) return;
+    std::wstring zoneName = ExtractZoneFromList();
+    if (zoneName.empty()) {
+        if (g_hwndZemLabel) SetWindowTextW(g_hwndZemLabel, L"(select a zone from the list first)");
+        return;
+    }
+    std::wstring safe;
+    for (wchar_t c : zoneName) {
+        if (c == L'\'') safe += L"''"; else safe += c;
+    }
+    std::string out = TrimRight(RunCommand(std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb -N -e \"SELECT zone_exp_multiplier FROM zone WHERE short_name='" + safe + L"'\" quarm"));
+    std::wstring zem = ToWide(out);
+    while (!zem.empty() && (zem.back() == L'\n' || zem.back() == L'\r' || zem.back() == L' '))
+        zem.pop_back();
+    if (zem.empty()) zem = L"0";
+    if (g_hwndZemValue) SetWindowTextW(g_hwndZemValue, zem.c_str());
+    if (g_hwndZemLabel) SetWindowTextW(g_hwndZemLabel,
+        (L"Zone: " + zoneName + L"  (current ZEM: " + zem + L")").c_str());
+}
+
+static void DoSaveZem() {
+    if (!CheckServerRunning(L"Save ZEM")) return;
+    std::wstring zoneName = ExtractZoneFromList();
+    if (zoneName.empty()) {
+        MessageBoxW(g_hwndMain, L"Select a zone from the list first.", L"Save ZEM", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    wchar_t val[64] = {};
+    GetWindowTextW(g_hwndZemValue, val, 64);
+    if (!val[0]) { MessageBoxW(g_hwndMain, L"Enter a ZEM value.", L"ZEM", MB_OK | MB_ICONINFORMATION); return; }
+    std::wstring safe;
+    for (wchar_t c : zoneName) { if (c == L'\'') safe += L"''"; else safe += c; }
+    RunQuery(L"UPDATE zone SET zone_exp_multiplier=" + std::wstring(val) +
+             L" WHERE short_name='" + safe + L"'");
+    if (g_hwndZoneResult)
+        SetWindowTextW(g_hwndZoneResult,
+            (L"ZEM set to " + std::wstring(val) + L" for zone '" + zoneName + L"'. Restart zone to take effect.").c_str());
+}
+
+static void DoDefaultZem() {
+    if (!CheckServerRunning(L"Reset ZEM")) return;
+    std::wstring zoneName = ExtractZoneFromList();
+    if (zoneName.empty()) {
+        MessageBoxW(g_hwndMain, L"Select a zone from the list first.", L"Reset ZEM", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::wstring safe;
+    for (wchar_t c : zoneName) { if (c == L'\'') safe += L"''"; else safe += c; }
+    // Default ZEM is 0 (which means "use global default" in EQEmu)
+    RunQuery(L"UPDATE zone SET zone_exp_multiplier=0 WHERE short_name='" + safe + L"'");
+    SetWindowTextW(g_hwndZemValue, L"0");
+    if (g_hwndZemLabel) SetWindowTextW(g_hwndZemLabel, (L"Zone: " + zoneName + L"  (ZEM reset to default: 0)").c_str());
+    if (g_hwndZoneResult)
+        SetWindowTextW(g_hwndZoneResult, (L"ZEM reset to default (0) for '" + zoneName + L"'.").c_str());
+}
+
+static void DoEnvDefault() {
+    if (!CheckServerRunning(L"Reset Zone")) return;
+    wchar_t zone[128] = {};
+    GetWindowTextW(g_hwndEnvZoneEdit, zone, 128);
+    if (!zone[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a zone short name first, then click Load Zone.",
+            L"Reset Zone", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::wstring safe;
+    for (wchar_t c : std::wstring(zone)) {
+        if (c == L'\'') safe += L"''"; else safe += c;
+    }
+    RunQuery(L"UPDATE zone SET weather=0, fog_minclip=0, fog_maxclip=0, "
+             L"fog_density=0, fog_red=0, fog_green=0, fog_blue=0, "
+             L"minclip=0, maxclip=0 WHERE short_name='" + safe + L"'");
+    // Reload the fields
+    SetWindowTextW(g_hwndEnvFogMin, L"0");
+    SetWindowTextW(g_hwndEnvFogMax, L"0");
+    SetWindowTextW(g_hwndEnvFogDensity, L"0");
+    SetWindowTextW(g_hwndEnvFogR, L"0");
+    SetWindowTextW(g_hwndEnvFogG, L"0");
+    SetWindowTextW(g_hwndEnvFogB, L"0");
+    SetWindowTextW(g_hwndEnvClipMin, L"0");
+    SetWindowTextW(g_hwndEnvClipMax, L"0");
+    SendMessage(g_hwndEnvWeatherCbo, CB_SETCURSEL, 0, 0);
+    if (g_hwndServerResult)
+        SetWindowTextW(g_hwndServerResult,
+            (L"Zone '" + std::wstring(zone) + L"' reset to default environment settings.").c_str());
+}
+
+static void DoEnvFindZone() {
+    if (!CheckServerRunning(L"Find Zone")) return;
+    wchar_t term[128] = {};
+    if (g_hwndEnvFindEdit) GetWindowTextW(g_hwndEnvFindEdit, term, 128);
+    if (!term[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a zone name or partial name to search.",
+            L"Find Zone", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::wstring safe;
+    for (wchar_t c : std::wstring(term)) {
+        if (c == L'\'') safe += L"''"; else safe += c;
+    }
+    std::wstring sql =
+        L"SELECT z.short_name, z.long_name, z.zoneidnumber, z.zone_exp_multiplier AS zem, "
+        L"CASE WHEN EXISTS(SELECT 1 FROM spawn2 s2 WHERE s2.zone=z.short_name AND s2.enabled=1) "
+        L"THEN 'ACTIVE' ELSE 'empty' END AS status "
+        L"FROM zone z WHERE z.short_name LIKE '%" + safe + L"%' OR z.long_name LIKE '%" + safe +
+        L"%' ORDER BY z.short_name LIMIT 30";
+    if (g_hwndZoneResult)
+        SetWindowTextW(g_hwndZoneResult, RunQueryTable(sql).c_str());
+}
+
+static void DoViewGuildRoster() {
+    if (!CheckServerRunning(L"View Roster")) return;
+    wchar_t name[128] = {};
+    GetWindowTextW(g_hwndGuildName, name, 128);
+    if (!name[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a guild name.", L"View Roster", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::wstring safe;
+    for (wchar_t c : std::wstring(name)) {
+        if (c == L'\'') safe += L"''"; else safe += c;
+    }
+    std::wstring sql =
+        L"SELECT cd.name AS character_name, cd.level, "
+        L"CASE cd.class WHEN 1 THEN 'WAR' WHEN 2 THEN 'CLR' WHEN 3 THEN 'PAL' "
+        L"WHEN 4 THEN 'RNG' WHEN 5 THEN 'SHD' WHEN 6 THEN 'DRU' WHEN 7 THEN 'MNK' "
+        L"WHEN 8 THEN 'BRD' WHEN 9 THEN 'ROG' WHEN 10 THEN 'SHM' WHEN 11 THEN 'NEC' "
+        L"WHEN 12 THEN 'WIZ' WHEN 13 THEN 'MAG' WHEN 14 THEN 'ENC' WHEN 15 THEN 'BST' "
+        L"ELSE CAST(cd.class AS CHAR) END AS class, "
+        L"CASE gm.rank WHEN 0 THEN 'Member' WHEN 1 THEN 'Officer' WHEN 2 THEN 'Leader' "
+        L"ELSE CONCAT('Rank ',gm.rank) END AS guild_rank "
+        L"FROM guild_members gm "
+        L"JOIN character_data cd ON cd.id=gm.char_id "
+        L"WHERE gm.guild_id=(SELECT id FROM guilds WHERE name='" + safe +
+        L"') ORDER BY gm.rank DESC, cd.level DESC";
+    if (g_hwndServerResult)
+        SetWindowTextW(g_hwndServerResult,
+            (L"Roster for '" + std::wstring(name) + L"':\r\n" + RunQueryTable(sql)).c_str());
+}
+
+// ============================================================
+// NEW OPERATIONS — Backup Tab (Clone, DB Size)
+// ============================================================
+
+static void DoCloneCharacter() {
+    if (!CheckServerRunning(L"Clone Character")) return;
+    wchar_t src[128] = {}, dst[128] = {};
+    GetWindowTextW(g_hwndCloneSource, src, 128);
+    GetWindowTextW(g_hwndCloneNewName, dst, 128);
+    if (!src[0] || !dst[0]) {
+        MessageBoxW(g_hwndMain, L"Enter both source character name and new clone name.",
+            L"Clone Character", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    if (IsCharacterOnline(src) == 1) {
+        MessageBoxW(g_hwndMain, L"Source character must be offline.",
+            L"Clone", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    int r = MessageBoxW(g_hwndMain,
+        (L"Clone '" + std::wstring(src) + L"' as '" + std::wstring(dst) + L"'?\n\n"
+         L"This copies all character data, inventory, spells, AAs, and skills\n"
+         L"to a new character on the same account.").c_str(),
+        L"Confirm Clone", MB_YESNO | MB_ICONQUESTION);
+    if (r != IDYES) return;
+    SetBusy(true);
+    SetStatus(L"Cloning character...");
+    std::wstring srcW = src, dstW = dst;
+    std::thread([srcW, dstW]{
+        // Get source character ID and account_id
+        std::string idOut = TrimRight(RunCommand(std::wstring(L"docker exec ") + CONTAINER +
+            L" mariadb -N -e \"SELECT id, account_id FROM character_data WHERE LOWER(name)=LOWER('" +
+            srcW + L"')\" quarm"));
+        if (idOut.empty()) {
+            auto* res = new AsyncResult{ false, L"Source character '" + srcW + L"' not found." };
+            PostMessageW(g_hwndMain, WM_ASYNC_DONE, TAB_BACKUP, (LPARAM)res);
+            return;
+        }
+        // Insert new character_data row with new name
+        RunQuery(L"INSERT INTO character_data "
+                 L"(account_id, name, level, race, class, gender, deity, zone_id, x, y, z, "
+                 L"last_login, time_played, pvp_status, gm, invulnerable) "
+                 L"SELECT account_id, '" + dstW + L"', level, race, class, gender, deity, zone_id, x, y, z, "
+                 L"last_login, time_played, pvp_status, gm, invulnerable "
+                 L"FROM character_data WHERE LOWER(name)=LOWER('" + srcW + L"')");
+        // Copy skills, spells, inventory for the new character
+        std::wstring newIdSql = L"(SELECT id FROM character_data WHERE LOWER(name)=LOWER('" + dstW + L"'))";
+        std::wstring srcIdSql = L"(SELECT id FROM character_data WHERE LOWER(name)=LOWER('" + srcW + L"'))";
+        RunQuery(L"INSERT IGNORE INTO character_skills (id, skill_id, value) "
+                 L"SELECT " + newIdSql + L", skill_id, value FROM character_skills WHERE id=" + srcIdSql);
+        RunQuery(L"INSERT IGNORE INTO character_spells (id, slot_id, spell_id) "
+                 L"SELECT " + newIdSql + L", slot_id, spell_id FROM character_spells WHERE id=" + srcIdSql);
+        RunQuery(L"INSERT IGNORE INTO character_languages (id, lang_id, value) "
+                 L"SELECT " + newIdSql + L", lang_id, value FROM character_languages WHERE id=" + srcIdSql);
+        auto* res = new AsyncResult{ true,
+            L"Character '" + srcW + L"' cloned as '" + dstW + L"'.\r\n"
+            L"Skills, spells, and languages were copied.\r\n"
+            L"Note: inventory items are not duplicated (character starts with empty bags)." };
+        PostMessageW(g_hwndMain, WM_ASYNC_DONE, TAB_BACKUP, (LPARAM)res);
+    }).detach();
+}
+
+static void DoDbSize() {
+    if (!CheckServerRunning(L"Database Size")) return;
+    std::wstring sql =
+        L"SELECT table_name, "
+        L"ROUND(((data_length + index_length) / 1024 / 1024), 2) AS size_mb "
+        L"FROM information_schema.tables WHERE table_schema='quarm' "
+        L"ORDER BY (data_length + index_length) DESC LIMIT 20";
+    std::string out = RunCommand(std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb -N -e \"" + sql + L"\" quarm");
+    // Size first column (right-justified), then table name
+    std::wstring formatted = L"  Size (MB)  Table Name\r\n";
+    formatted += L"  ---------  ----------------------------------------\r\n";
+    std::istringstream ss(out);
+    std::string line;
+    double totalMB = 0;
+    while (std::getline(ss, line)) {
+        line.erase(line.find_last_not_of(" \t\r\n") + 1);
+        if (line.empty()) continue;
+        auto tab = line.find('\t');
+        if (tab == std::string::npos) continue;
+        std::wstring name = ToWide(line.substr(0, tab));
+        std::wstring size = ToWide(line.substr(tab + 1));
+        // Right-justify size to 9 chars
+        while (size.size() < 9) size = L" " + size;
+        formatted += L"  " + size + L"  " + name + L"\r\n";
+        try { totalMB += std::stod(std::string(size.begin(), size.end())); } catch (...) {}
+    }
+    wchar_t totalBuf[64];
+    swprintf_s(totalBuf, L"\r\n  %9.2f  TOTAL (top 20 tables)", totalMB);
+    formatted += totalBuf;
+    if (g_hwndBackupInfo)
+        SetWindowTextW(g_hwndBackupInfo, formatted.c_str());
+}
+
 static void CreateAdvancedPanel(HWND parent) {
-    int y = 16;
+    int y = 14;
 
     MakeLabel(parent, L"Server Operations:", 20, y, 150, 20);
-    y += 26;
+    y += 24;
+    MakeButton(parent, L"Rebuild Server", IDC_BTN_REBUILD,     20,  y, 130, 28);
+    MakeButton(parent, L"Start Fresh...", IDC_BTN_START_FRESH, 160, y, 130, 28);
+    y += 40;
+    g_hwndAdvResult = MakeResultBox(parent, IDC_ADV_RESULT, 20, y, 880, 60);
+    y += 74;
 
-    MakeButton(parent, L"Rebuild Server", IDC_BTN_REBUILD,     20,  y, 130, 30);
-    MakeButton(parent, L"Start Fresh...", IDC_BTN_START_FRESH, 165, y, 130, 30);
-    y += 46;
-
-    g_hwndAdvResult = MakeResultBox(parent, IDC_ADV_RESULT, 20, y, 570, 80);
+    MakeLabel(parent, L"Docker System Info:", 20, y, 150, 20);
+    y += 24;
+    MakeButton(parent, L"Docker Logs",      IDC_BTN_DOCKER_LOGS,     20,  y, 120, 28);
+    MakeButton(parent, L"Disk Usage",       IDC_BTN_DISK_USAGE,     150, y, 110, 28);
+    MakeButton(parent, L"Container Stats",  IDC_BTN_CONTAINER_STATS, 270, y, 130, 28);
+    y += 40;
+    g_hwndAdvSysResult = MakeResultBox(parent, IDC_ADV_SYS_RESULT, 20, y, 880, 100);
     y += 96;
 
     MakeLabel(parent, L"Utilities:", 20, y, 80, 20);
-    y += 26;
+    y += 24;
     MakeButton(parent, L"Copy eqhost.txt",    IDC_BTN_COPY_EQHOST,  20,  y, 140, 26);
     MakeButton(parent, L"Open Install Folder", IDC_BTN_OPEN_FOLDER, 170, y, 150, 26);
     MakeButton(parent, L"Open Docker Desktop", IDC_BTN_OPEN_DOCKER, 330, y, 150, 26);
-    y += 44;
+    y += 40;
 
     MakeLabel(parent, L"Settings:", 20, y, 80, 20);
+    y += 24;
+    HWND chkDark = MakeCheck(parent, L"Dark mode",
+                              IDC_CHK_DARK_MODE, 20, y, 140, 22);
+    if (GetDarkMode())
+        SendMessage(chkDark, BM_SETCHECK, BST_CHECKED, 0);
+    y += 26;
+    HWND chkAOT = MakeCheck(parent, L"Always on top",
+                             IDC_CHK_ALWAYS_ON_TOP, 20, y, 160, 22);
+    if (GetAlwaysOnTop())
+        SendMessage(chkAOT, BM_SETCHECK, BST_CHECKED, 0);
     y += 26;
     HWND chkAutoStart = MakeCheck(parent, L"Start with Windows",
                                    IDC_CHK_AUTOSTART, 20, y, 160, 22);
     if (GetAutoStartEnabled())
         SendMessage(chkAutoStart, BM_SETCHECK, BST_CHECKED, 0);
-    y += 28;
+    y += 26;
     HWND chkNoBackup = MakeCheck(parent,
         L"Disable automatic backup on stop  (not recommended)",
         IDC_CHK_NO_BACKUP, 20, y, 380, 22);
     if (GetNoBackupOnStop())
         SendMessage(chkNoBackup, BM_SETCHECK, BST_CHECKED, 0);
-    y += 30;
+    y += 28;
     MakeLabel(parent, L"Keep last backups:", 20, y + 4, 130, 20);
     HWND cboRetention = MakeCombo(parent, IDC_BACKUP_RETENTION, 158, y, 80, 100);
     SendMessageW(cboRetention, CB_ADDSTRING, 0, (LPARAM)L"5");
@@ -1730,6 +4443,43 @@ static void CreateAdvancedPanel(HWND parent) {
     int ret = GetBackupRetention();
     int retIdx = (ret == 5 ? 0 : ret == 10 ? 1 : ret == 20 ? 2 : 3);
     SendMessage(cboRetention, CB_SETCURSEL, retIdx, 0);
+}
+
+static void DoDockerLogs() {
+    if (g_operationBusy) return;
+    if (g_hwndAdvSysResult) SetWindowTextW(g_hwndAdvSysResult, L"Fetching Docker logs...");
+    SetBusy(true);
+    std::thread([]{
+        std::string out = RunCommand(L"docker compose logs --tail=200", g_installDir);
+        std::wstring norm = NormalizeNewlines(ToWide(out));
+        auto* res = new AsyncResult{ true, norm.empty() ? L"(no output)" : norm };
+        PostMessageW(g_hwndMain, WM_ASYNC_DONE, TAB_ADVANCED, (LPARAM)res);
+    }).detach();
+}
+
+static void DoDiskUsage() {
+    if (g_operationBusy) return;
+    if (g_hwndAdvSysResult) SetWindowTextW(g_hwndAdvSysResult, L"Checking disk usage...");
+    SetBusy(true);
+    std::thread([]{
+        std::string out = RunCommand(L"docker system df");
+        std::wstring norm = NormalizeNewlines(ToWide(out));
+        auto* res = new AsyncResult{ true, norm.empty() ? L"(no output)" : norm };
+        PostMessageW(g_hwndMain, WM_ASYNC_DONE, TAB_ADVANCED, (LPARAM)res);
+    }).detach();
+}
+
+static void DoContainerStats() {
+    if (g_operationBusy) return;
+    if (g_hwndAdvSysResult) SetWindowTextW(g_hwndAdvSysResult, L"Fetching container stats...");
+    SetBusy(true);
+    std::thread([]{
+        std::wstring cmd = std::wstring(L"docker stats --no-stream ") + CONTAINER;
+        std::string out = RunCommand(cmd);
+        std::wstring norm = NormalizeNewlines(ToWide(out));
+        auto* res = new AsyncResult{ true, norm.empty() ? L"(container not running)" : norm };
+        PostMessageW(g_hwndMain, WM_ASYNC_DONE, TAB_ADVANCED, (LPARAM)res);
+    }).detach();
 }
 
 static void DoCopyEqhost() {
@@ -1801,11 +4551,11 @@ static void DoRebuild() {
 static void DoStartFresh() {
     if (g_operationBusy) return;
     int r = MessageBoxW(g_hwndMain,
-        L"WARNING — THIS WILL PERMANENTLY DELETE ALL CHARACTER DATA.\n\n"
+        L"WARNING \x2014 THIS WILL PERMANENTLY DELETE ALL CHARACTER DATA.\n\n"
         L"This destroys the quarm-data volume.\n"
         L"ALL characters, accounts, and progress will be lost.\n\n"
         L"This cannot be undone.\n\nAre you absolutely sure?",
-        L"START FRESH — DATA WILL BE DELETED",
+        L"START FRESH \x2014 DATA WILL BE DELETED",
         MB_YESNO | MB_ICONERROR | MB_DEFBUTTON2);
     if (r != IDYES) return;
     r = MessageBoxW(g_hwndMain,
@@ -1837,17 +4587,13 @@ static void DoStartFresh() {
 }
 
 // ============================================================
-// TAB 8 — GAME TOOLS PANEL
+// TAB 3 — PRO TOOLS PANEL
 // ============================================================
 
 static HWND g_hwndGameItemSearch = nullptr;
 static HWND g_hwndGameItemId     = nullptr;
 static HWND g_hwndGameCharName   = nullptr;
 static HWND g_hwndGameResult     = nullptr;
-static HWND g_hwndGameEraCbo     = nullptr;
-static HWND g_hwndGameZoneCbo    = nullptr;
-static HWND g_hwndGameEraCur     = nullptr;
-static HWND g_hwndGameZoneCur    = nullptr;
 
 static void SetGameResult(const std::wstring& text) {
     if (g_hwndGameResult)
@@ -1855,88 +4601,511 @@ static void SetGameResult(const std::wstring& text) {
 }
 
 static void CreateGameToolsPanel(HWND parent) {
-    int y = 10;
+    int y = 8;
 
-    MakeLabel(parent, L"Item Lookup:", 20, y, 120, 20);
+    // --- Character Management ---
+    MakeLabel(parent, L"Character Management (character must be offline for most operations):", 20, y, 480, 20);
     y += 22;
-    MakeLabel(parent, L"Search:", 20, y+4, 50, 20);
-    g_hwndGameItemSearch = MakeEdit(parent, IDC_GAME_ITEM_SEARCH, 76, y, 240, 24);
-    MakeButton(parent, L"Search Items", IDC_BTN_ITEM_SEARCH, 326, y, 110, 26);
-    MakeLabel(parent, L"(name or item ID)", 446, y+4, 150, 20);
-    y += 34;
+    MakeLabel(parent, L"Character:", 20, y+4, 70, 20);
+    g_hwndProCharName = MakeEdit(parent, IDC_PRO_CHAR_NAME, 96, y, 200, 24);
+    MakeLabel(parent, L"Level:", 316, y+4, 40, 20);
+    g_hwndProLevelCbo = MakeCombo(parent, IDC_PRO_LEVEL_COMBO, 360, y, 56, 700);
+    for (int lvl = 1; lvl <= 65; ++lvl) {
+        wchar_t buf[8]; swprintf_s(buf, L"%d", lvl);
+        SendMessageW(g_hwndProLevelCbo, CB_ADDSTRING, 0, (LPARAM)buf);
+    }
+    SendMessage(g_hwndProLevelCbo, CB_SETCURSEL, 49, 0);
+    MakeButton(parent, L"Set Level", IDC_BTN_PRO_SET_LEVEL, 422, y, 80, 26);
+    MakeLabel(parent, L"AA:", 514, y+4, 24, 20);
+    g_hwndProAaEdit = MakeEdit(parent, IDC_PRO_AA_EDIT, 542, y, 60, 24);
+    MakeButton(parent, L"Set AA", IDC_BTN_PRO_SET_AA, 612, y, 70, 26);
+    y += 28;
 
-    MakeLabel(parent, L"Give Item:", 20, y, 80, 20);
-    y += 22;
-    MakeLabel(parent, L"Character:", 20, y+4, 65, 20);
-    g_hwndGameCharName = MakeEdit(parent, IDC_GAME_CHAR_NAME, 90, y, 150, 24);
-    MakeLabel(parent, L"Item ID:", 250, y+4, 52, 20);
-    g_hwndGameItemId = MakeEdit(parent, IDC_GAME_ITEM_ID, 306, y, 80, 24);
-    MakeButton(parent, L"Give Item", IDC_BTN_GIVE_ITEM, 396, y, 100, 26);
-    y += 40;
+    // Race, Class, Gender
+    MakeLabel(parent, L"Race:", 20, y+4, 36, 20);
+    g_hwndProRaceCbo = MakeCombo(parent, IDC_PRO_RACE_COMBO, 60, y, 120, 400);
+    for (int i = 0; i < RACE_TABLE_COUNT; ++i)
+        SendMessageW(g_hwndProRaceCbo, CB_ADDSTRING, 0, (LPARAM)RACE_TABLE[i].name);
+    MakeButton(parent, L"Set", IDC_BTN_PRO_SET_RACE, 186, y, 40, 26);
+    MakeLabel(parent, L"Class:", 236, y+4, 40, 20);
+    g_hwndProClassCbo = MakeCombo(parent, IDC_PRO_CLASS_COMBO, 280, y, 120, 400);
+    for (int i = 0; i < 15; ++i)
+        SendMessageW(g_hwndProClassCbo, CB_ADDSTRING, 0, (LPARAM)CLASS_NAMES[i]);
+    MakeButton(parent, L"Set", IDC_BTN_PRO_SET_CLASS, 406, y, 40, 26);
+    MakeLabel(parent, L"Gender:", 456, y+4, 48, 20);
+    g_hwndProGenderCbo = MakeCombo(parent, IDC_PRO_GENDER_COMBO, 508, y, 80, 100);
+    SendMessageW(g_hwndProGenderCbo, CB_ADDSTRING, 0, (LPARAM)L"Male");
+    SendMessageW(g_hwndProGenderCbo, CB_ADDSTRING, 0, (LPARAM)L"Female");
+    SendMessage(g_hwndProGenderCbo, CB_SETCURSEL, 0, 0);
+    MakeButton(parent, L"Set", IDC_BTN_PRO_SET_GENDER, 594, y, 40, 26);
+    MakeLabel(parent, L"(restart req'd)", 644, y+4, 100, 16);
+    y += 28;
 
-    MakeLabel(parent, L"Server Settings (require restart):", 20, y, 250, 20);
-    y += 24;
+    // Rename (own row)
+    MakeLabel(parent, L"Rename:", 20, y+4, 52, 20);
+    g_hwndProNewName = MakeEdit(parent, IDC_PRO_NEWNAME, 78, y, 180, 24);
+    MakeButton(parent, L"Rename Character", IDC_BTN_PRO_RENAME, 266, y, 130, 26);
+    y += 28;
 
-    MakeLabel(parent, L"Era / Expansion:", 20, y+4, 110, 20);
-    MakeLabel(parent, L"Current:", 136, y+4, 52, 20);
-    g_hwndGameEraCur = MakeLabel(parent, L"(unknown)", 190, y+4, 120, 20);
-    g_hwndGameEraCbo = MakeCombo(parent, IDC_GAME_ERA_COMBO, 320, y, 160, 200);
-    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Classic");
-    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Kunark");
-    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Velious");
-    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Luclin");
-    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Planes of Power");
-    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"All Expansions");
-    MakeButton(parent, L"Set Era", IDC_BTN_SET_ERA, 490, y, 80, 26);
-    y += 32;
+    // Surname (own row)
+    MakeLabel(parent, L"Surname:", 20, y+4, 58, 20);
+    g_hwndProSurname = MakeEdit(parent, IDC_PRO_SURNAME, 82, y, 180, 24);
+    MakeButton(parent, L"Set Surname", IDC_BTN_PRO_SET_SURNAME, 270, y, 100, 26);
+    MakeLabel(parent, L"(3-20 chars, alpha only)", 380, y+4, 170, 20);
+    y += 28;
 
-    MakeLabel(parent, L"Dynamic Zones:", 20, y+4, 100, 20);
-    MakeLabel(parent, L"Current:", 136, y+4, 52, 20);
-    g_hwndGameZoneCur = MakeLabel(parent, L"(unknown)", 190, y+4, 60, 20);
-    g_hwndGameZoneCbo = MakeCombo(parent, IDC_GAME_ZONE_COMBO, 320, y, 80, 200);
-    SendMessageW(g_hwndGameZoneCbo, CB_ADDSTRING, 0, (LPARAM)L"5");
-    SendMessageW(g_hwndGameZoneCbo, CB_ADDSTRING, 0, (LPARAM)L"10");
-    SendMessageW(g_hwndGameZoneCbo, CB_ADDSTRING, 0, (LPARAM)L"15");
-    SendMessageW(g_hwndGameZoneCbo, CB_ADDSTRING, 0, (LPARAM)L"20");
-    SendMessageW(g_hwndGameZoneCbo, CB_ADDSTRING, 0, (LPARAM)L"25");
-    MakeButton(parent, L"Set Zones", IDC_BTN_SET_ZONE_COUNT, 410, y, 90, 26);
-    MakeLabel(parent, L"(more zones = more RAM)", 510, y+4, 180, 20);
-    y += 42;
+    // Title (own row)
+    MakeLabel(parent, L"AA Title:", 20, y+4, 58, 20);
+    g_hwndProTitleCbo = MakeCombo(parent, IDC_PRO_TITLE_COMBO, 82, y, 280, 200);
+    SendMessageW(g_hwndProTitleCbo, CB_ADDSTRING, 0, (LPARAM)L"0 \x2014 None");
+    SendMessageW(g_hwndProTitleCbo, CB_ADDSTRING, 0, (LPARAM)L"1 \x2014 General  (Baron / Baroness)");
+    SendMessageW(g_hwndProTitleCbo, CB_ADDSTRING, 0, (LPARAM)L"2 \x2014 Archtype (Master / Brother / Veteran)");
+    SendMessageW(g_hwndProTitleCbo, CB_ADDSTRING, 0, (LPARAM)L"3 \x2014 Class    (Muse / Marshall / Sage)");
+    SendMessage(g_hwndProTitleCbo, CB_SETCURSEL, 0, 0);
+    MakeButton(parent, L"Set Title", IDC_BTN_PRO_SET_TITLE, 370, y, 86, 26);
+    y += 30;
 
-    g_hwndGameResult = MakeResultBox(parent, IDC_GAME_RESULT, 20, y, 730, 200);
+    // Platinum + Currency + Inventory
+    MakeLabel(parent, L"Platinum:", 20, y+4, 58, 20);
+    g_hwndProPlatAmount = MakeEdit(parent, IDC_PRO_PLAT_AMOUNT, 82, y, 80, 24);
+    MakeButton(parent, L"Give Platinum", IDC_BTN_PRO_GIVE_PLAT, 170, y, 110, 26);
+    MakeButton(parent, L"Currency",      IDC_BTN_SHOW_CURRENCY,  290, y, 80,  26);
+    MakeButton(parent, L"Inventory",     IDC_BTN_SHOW_INVENTORY, 378, y, 80,  26);
+    y += 30;
+
+    // --- Loot Table Viewer ---
+    MakeLabel(parent, L"Loot Lookup:", 20, y+4, 84, 20);
+    g_hwndLootSearch = MakeEdit(parent, IDC_LOOT_SEARCH, 108, y, 220, 24);
+    MakeButton(parent, L"By NPC Name", IDC_BTN_LOOT_BY_NPC,  336, y, 100, 26);
+    MakeButton(parent, L"By Item Name", IDC_BTN_LOOT_BY_ITEM, 442, y, 100, 26);
+    y += 28;
+
+    // --- Item Lookup + Give ---
+    MakeLabel(parent, L"Item Lookup:", 20, y+4, 84, 20);
+    g_hwndGameItemSearch = MakeEdit(parent, IDC_GAME_ITEM_SEARCH, 108, y, 220, 24);
+    MakeButton(parent, L"Search Items", IDC_BTN_ITEM_SEARCH, 336, y, 100, 26);
+    MakeLabel(parent, L"Item ID:", 450, y+4, 52, 20);
+    g_hwndGameItemId = MakeEdit(parent, IDC_GAME_ITEM_ID, 506, y, 70, 24);
+    MakeButton(parent, L"Give Item", IDC_BTN_GIVE_ITEM, 584, y, 80, 26);
+    y += 30;
+
+    // --- Spells ---
+    MakeLabel(parent, L"Spells:", 20, y+4, 44, 20);
+    g_hwndSpellSearch = MakeEdit(parent, IDC_SPELL_SEARCH, 68, y, 180, 24);
+    MakeButton(parent, L"Search", IDC_BTN_SPELL_SEARCH, 256, y, 64, 26);
+    MakeButton(parent, L"Scribe Selected", IDC_BTN_SCRIBE_SPELL, 326, y, 110, 26);
+    MakeButton(parent, L"Scribe All", IDC_BTN_SCRIBE_ALL, 442, y, 80, 26);
+    y += 26;
+    g_hwndSpellList = MakeListBox(parent, IDC_SPELL_LIST, 20, y, 560, 56);
+    y += 60;
+
+    // --- Skills (Max All Skills after Load Skills) ---
+    MakeLabel(parent, L"Skills:", 20, y+4, 42, 20);
+    g_hwndSkillSearch = MakeEdit(parent, IDC_SKILL_SEARCH, 66, y, 160, 24);
+    MakeButton(parent, L"Search", IDC_BTN_SKILL_SEARCH, 232, y, 64, 26);
+    MakeLabel(parent, L"Value:", 308, y+4, 38, 20);
+    g_hwndSkillValue = MakeEdit(parent, IDC_SKILL_VALUE, 350, y, 46, 24);
+    MakeButton(parent, L"Set Skill", IDC_BTN_SET_SKILL, 402, y, 72, 26);
+    MakeButton(parent, L"Load Skills", IDC_BTN_LOAD_SKILLS, 480, y, 90, 26);
+    MakeButton(parent, L"Max All Skills", IDC_BTN_MAX_SKILLS, 576, y, 110, 26);
+    y += 26;
+    g_hwndSkillList = MakeListBox(parent, IDC_SKILL_LIST, 20, y, 560, 56);
+    y += 60;
+
+    g_hwndGameResult = MakeResultBox(parent, IDC_GAME_RESULT, 20, y, 940, 120);
 }
 
-static void RefreshGameToolsTab() {
-    if (!IsContainerRunning()) {
-        if (g_hwndGameEraCur) SetWindowTextW(g_hwndGameEraCur, L"(server off)");
-        if (g_hwndGameZoneCur) SetWindowTextW(g_hwndGameZoneCur, L"(server off)");
+static void DoSetCharLevel() {
+    if (!CheckServerRunning(L"Set Level")) return;
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndProCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name in the Character field.",
+            L"Character Required", MB_OK | MB_ICONINFORMATION);
         return;
     }
-    std::wstring eraSql = L"SELECT rule_value FROM rule_values WHERE rule_name='World:CurrentExpansion'";
-    std::wstring eraResult = RunQuery(eraSql);
-    if (eraResult != L"(no results)") {
-        std::wstring display = L"(unknown)";
-        if (eraResult.find(L"-1") != std::wstring::npos) display = L"All";
-        else if (eraResult.find(L"4") != std::wstring::npos) display = L"PoP";
-        else if (eraResult.find(L"3") != std::wstring::npos) display = L"Luclin";
-        else if (eraResult.find(L"2") != std::wstring::npos) display = L"Velious";
-        else if (eraResult.find(L"1") != std::wstring::npos) display = L"Kunark";
-        else if (eraResult.find(L"0") != std::wstring::npos) display = L"Classic";
-        if (g_hwndGameEraCur) SetWindowTextW(g_hwndGameEraCur, display.c_str());
+    int sel = (int)SendMessage(g_hwndProLevelCbo, CB_GETCURSEL, 0, 0);
+    if (sel == CB_ERR) {
+        MessageBoxW(g_hwndMain, L"Select a level from the dropdown.",
+            L"Level Required", MB_OK | MB_ICONINFORMATION);
+        return;
     }
-    std::wstring zoneSql = L"SELECT dynamics FROM launcher LIMIT 1";
-    std::wstring zoneResult = RunQuery(zoneSql);
-    if (zoneResult != L"(no results)") {
-        std::wstring num;
-        bool foundNewline = false;
-        for (auto c : zoneResult) {
-            if (c == L'\n' || c == L'\r') { foundNewline = true; continue; }
-            if (foundNewline && iswdigit(c)) num += c;
-            else if (foundNewline && !num.empty()) break;
+    int newLevel = sel + 1;
+
+    std::wstring checkSql =
+        L"SELECT cd.name, cd.level FROM character_data cd "
+        L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"')";
+    std::wstring current = RunQuery(checkSql);
+    if (current == L"(no results)") {
+        SetGameResult(std::wstring(L"Character '") + chr + L"' not found.");
+        return;
+    }
+    if (IsCharacterOnline(chr) == 1) {
+        MessageBoxW(g_hwndMain,
+            L"That character is currently online.\r\nHave them log out before changing their level.",
+            L"Character Online", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    int r = MessageBoxW(g_hwndMain,
+        (std::wstring(L"Set '") + chr + L"' to level " + std::to_wstring(newLevel) +
+         L"?\r\n\r\n" + current + L"\r\nContinue?").c_str(),
+        L"Confirm Set Level", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
+    if (r != IDYES) return;
+    RunQuery(L"UPDATE character_data SET level=" + std::to_wstring(newLevel) +
+             L" WHERE LOWER(name)=LOWER('" + std::wstring(chr) + L"')");
+    SetGameResult(std::wstring(L"Level set to ") + std::to_wstring(newLevel) +
+        L" for '" + chr + L"'.\r\n\r\n"
+        L"Character will see the new level on next login.\r\n"
+        L"Note: XP bar and spell list may need a zone-in to fully update.");
+}
+
+static void DoSetAAPoints() {
+    if (!CheckServerRunning(L"Set AA Points")) return;
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndProCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name in the Character field.",
+            L"Character Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    wchar_t aaStr[32] = {};
+    GetWindowTextW(g_hwndProAaEdit, aaStr, 32);
+    if (!aaStr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a number of AA points.",
+            L"AA Points Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    for (wchar_t* p = aaStr; *p; p++) {
+        if (!iswdigit(*p)) {
+            MessageBoxW(g_hwndMain, L"AA Points must be a positive whole number.",
+                L"Invalid Value", MB_OK | MB_ICONWARNING);
+            return;
         }
-        if (!num.empty() && g_hwndGameZoneCur)
-            SetWindowTextW(g_hwndGameZoneCur, num.c_str());
     }
+    std::wstring checkSql =
+        L"SELECT cd.name, cd.aa_points, cd.aa_points_spent FROM character_data cd "
+        L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"')";
+    std::wstring current = RunQuery(checkSql);
+    if (current == L"(no results)") {
+        SetGameResult(std::wstring(L"Character '") + chr + L"' not found.");
+        return;
+    }
+    if (IsCharacterOnline(chr) == 1) {
+        MessageBoxW(g_hwndMain,
+            L"That character is currently online.\r\nHave them log out before modifying AA points.",
+            L"Character Online", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    int r = MessageBoxW(g_hwndMain,
+        (std::wstring(L"Set unspent AA points to ") + aaStr + L" for '" + chr + L"'?\r\n\r\n" +
+         current + L"\r\nSpent AAs are not changed.\r\n\r\nContinue?").c_str(),
+        L"Confirm Set AA Points", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
+    if (r != IDYES) return;
+    RunQuery(L"UPDATE character_data SET aa_points=" + std::wstring(aaStr) +
+             L" WHERE LOWER(name)=LOWER('" + std::wstring(chr) + L"')");
+    SetGameResult(std::wstring(L"AA points set to ") + aaStr +
+        L" (unspent) for '" + chr + L"'.\r\n\r\nCharacter will see the updated count on next login.");
+}
+
+static void DoSetCharClass() {
+    if (!CheckServerRunning(L"Change Class")) return;
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndProCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name in the Character field.",
+            L"Character Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    int sel = (int)SendMessage(g_hwndProClassCbo, CB_GETCURSEL, 0, 0);
+    if (sel == CB_ERR || sel < 0 || sel >= 15) {
+        MessageBoxW(g_hwndMain, L"Select a class from the dropdown.",
+            L"Class Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    int newClassId = sel + 1; // class IDs are 1-15
+    const wchar_t* newClassName = CLASS_NAMES[sel];
+
+    std::wstring checkSql =
+        L"SELECT cd.name, cd.level, "
+        L"CASE cd.class WHEN 1 THEN 'Warrior' WHEN 2 THEN 'Cleric' WHEN 3 THEN 'Paladin' "
+        L"WHEN 4 THEN 'Ranger' WHEN 5 THEN 'Shadow Knight' WHEN 6 THEN 'Druid' "
+        L"WHEN 7 THEN 'Monk' WHEN 8 THEN 'Bard' WHEN 9 THEN 'Rogue' "
+        L"WHEN 10 THEN 'Shaman' WHEN 11 THEN 'Necromancer' WHEN 12 THEN 'Wizard' "
+        L"WHEN 13 THEN 'Magician' WHEN 14 THEN 'Enchanter' WHEN 15 THEN 'Beastlord' "
+        L"ELSE CAST(cd.class AS CHAR) END AS current_class "
+        L"FROM character_data cd WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"')";
+    std::wstring current = RunQuery(checkSql);
+    if (current == L"(no results)") {
+        SetGameResult(std::wstring(L"Character '") + chr + L"' not found.");
+        return;
+    }
+    if (IsCharacterOnline(chr) == 1) {
+        MessageBoxW(g_hwndMain,
+            L"That character is currently online.\r\nHave them log out before changing their class.",
+            L"Character Online", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    int r = MessageBoxW(g_hwndMain,
+        (std::wstring(L"Change '") + chr + L"' to class " + newClassName + L"?\r\n\r\n" +
+         current + L"\r\n"
+         L"WARNING: Class change does not validate race/class combinations,\r\n"
+         L"re-grant appropriate spells, or refund AA points.\r\n"
+         L"A server restart is required for the change to take effect.\r\n\r\nContinue?").c_str(),
+        L"Confirm Change Class", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+    if (r != IDYES) return;
+    RunQuery(L"UPDATE character_data SET class=" + std::to_wstring(newClassId) +
+             L" WHERE LOWER(name)=LOWER('" + std::wstring(chr) + L"')");
+    SetGameResult(std::wstring(L"Class changed to ") + newClassName +
+        L" (ID=" + std::to_wstring(newClassId) + L") for '" + chr + L"'.\r\n\r\n"
+        L"Restart the server for the change to take effect fully.");
+}
+
+static void DoSetCharRace() {
+    if (!CheckServerRunning(L"Change Race")) return;
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndProCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name in the Character field.",
+            L"Character Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    int sel = (int)SendMessage(g_hwndProRaceCbo, CB_GETCURSEL, 0, 0);
+    if (sel == CB_ERR || sel < 0 || sel >= RACE_TABLE_COUNT) {
+        MessageBoxW(g_hwndMain, L"Select a race from the dropdown.",
+            L"Race Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    int newRaceId     = RACE_TABLE[sel].id;
+    const wchar_t* newRaceName = RACE_TABLE[sel].name;
+
+    std::wstring checkSql =
+        L"SELECT cd.name, cd.level, cd.race FROM character_data cd "
+        L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"')";
+    std::wstring current = RunQuery(checkSql);
+    if (current == L"(no results)") {
+        SetGameResult(std::wstring(L"Character '") + chr + L"' not found.");
+        return;
+    }
+    if (IsCharacterOnline(chr) == 1) {
+        MessageBoxW(g_hwndMain,
+            L"That character is currently online.\r\nHave them log out before changing their race.",
+            L"Character Online", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    int r = MessageBoxW(g_hwndMain,
+        (std::wstring(L"Change '") + chr + L"' to race " + newRaceName + L"?\r\n\r\n" +
+         current + L"\r\n"
+         L"WARNING: Race change does not validate race/class combinations\r\n"
+         L"or update race-specific starting stats.\r\n"
+         L"A server restart is required for the change to take effect.\r\n\r\nContinue?").c_str(),
+        L"Confirm Change Race", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+    if (r != IDYES) return;
+    RunQuery(L"UPDATE character_data SET race=" + std::to_wstring(newRaceId) +
+             L" WHERE LOWER(name)=LOWER('" + std::wstring(chr) + L"')");
+    SetGameResult(std::wstring(L"Race changed to ") + newRaceName +
+        L" (ID=" + std::to_wstring(newRaceId) + L") for '" + chr + L"'.\r\n\r\n"
+        L"Restart the server for the change to take effect fully.");
+}
+
+static void DoSetCharGender() {
+    if (!CheckServerRunning(L"Change Gender")) return;
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndProCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name in the Character field.",
+            L"Character Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    int sel = (int)SendMessage(g_hwndProGenderCbo, CB_GETCURSEL, 0, 0);
+    if (sel == CB_ERR) return;
+    int newGender = sel; // 0=Male, 1=Female
+    const wchar_t* genderName = (sel == 0) ? L"Male" : L"Female";
+
+    std::wstring checkSql =
+        L"SELECT cd.name, CASE cd.gender WHEN 0 THEN 'Male' WHEN 1 THEN 'Female' ELSE 'Unknown' END AS gender "
+        L"FROM character_data cd WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"')";
+    std::wstring current = RunQuery(checkSql);
+    if (current == L"(no results)") {
+        SetGameResult(std::wstring(L"Character '") + chr + L"' not found."); return;
+    }
+    if (IsCharacterOnline(chr) == 1) {
+        MessageBoxW(g_hwndMain,
+            L"That character is currently online.\r\nHave them log out before changing their gender.",
+            L"Character Online", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    int r = MessageBoxW(g_hwndMain,
+        (std::wstring(L"Change '") + chr + L"' to " + genderName + L"?\r\n\r\n" +
+         current + L"\r\nServer restart required.\r\n\r\nContinue?").c_str(),
+        L"Confirm Change Gender", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
+    if (r != IDYES) return;
+    RunQuery(L"UPDATE character_data SET gender=" + std::to_wstring(newGender) +
+             L" WHERE LOWER(name)=LOWER('" + std::wstring(chr) + L"')");
+    SetGameResult(std::wstring(L"Gender set to ") + genderName +
+        L" for '" + chr + L"'. Restart the server to take effect.");
+}
+
+static void DoProGivePlatinum() {
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndProCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name in the Give Platinum Character field.",
+            L"Character Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    wchar_t amtStr[32] = {};
+    if (g_hwndProPlatAmount) GetWindowTextW(g_hwndProPlatAmount, amtStr, 32);
+    if (!amtStr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a platinum amount.",
+            L"Amount Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    for (wchar_t* p = amtStr; *p; p++) {
+        if (!iswdigit(*p)) {
+            MessageBoxW(g_hwndMain, L"Amount must be a positive whole number.",
+                L"Invalid Amount", MB_OK | MB_ICONWARNING);
+            return;
+        }
+    }
+    if (!CheckServerRunning(L"Give Platinum")) return;
+    std::wstring checkSql =
+        L"SELECT cc.platinum AS carried, cc.platinum_bank AS banked "
+        L"FROM character_currency cc JOIN character_data cd ON cd.id=cc.id "
+        L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"')";
+    std::wstring current = RunQueryTable(checkSql);
+    SetGameResult(std::wstring(L"Current platinum for '") + chr + L"':\r\n\r\n" + current);
+    int r = MessageBoxW(g_hwndMain,
+        (std::wstring(L"Add ") + amtStr + L" platinum to '" + chr + L"' (carried)?\r\n\r\n" +
+         current + L"\r\nWARNING: Character should be LOGGED OUT.\r\n\r\nContinue?").c_str(),
+        L"Confirm Give Platinum", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
+    if (r != IDYES) return;
+    RunQuery(L"UPDATE character_currency cc JOIN character_data cd ON cd.id=cc.id "
+             L"SET cc.platinum=cc.platinum+" + std::wstring(amtStr) +
+             L" WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"')");
+    SetGameResult(std::wstring(L"Added ") + amtStr + L" platinum to '" + chr + L"' (carried).");
+}
+
+static void DoRenameCharacter() {
+    if (!CheckServerRunning(L"Rename Character")) return;
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndProCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter the current character name in the Character field.",
+            L"Character Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    wchar_t newName[128] = {};
+    if (g_hwndProNewName) GetWindowTextW(g_hwndProNewName, newName, 128);
+    if (!newName[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a new name in the Rename field.",
+            L"New Name Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    // Basic validation: alpha only, 4-15 chars, starts with uppercase
+    size_t len = wcslen(newName);
+    if (len < 4 || len > 15) {
+        MessageBoxW(g_hwndMain, L"Name must be 4-15 characters.", L"Invalid Name", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    for (size_t i = 0; i < len; i++) {
+        if (!iswalpha(newName[i])) {
+            MessageBoxW(g_hwndMain, L"Name must contain only letters.", L"Invalid Name", MB_OK | MB_ICONWARNING);
+            return;
+        }
+    }
+    // Check not already taken
+    std::wstring checkTaken = RunQuery(
+        L"SELECT COUNT(*) FROM character_data WHERE LOWER(name)=LOWER('" + std::wstring(newName) + L"')");
+    if (checkTaken.find(L"1") != std::wstring::npos) {
+        SetGameResult(std::wstring(L"The name '") + newName + L"' is already in use.");
+        return;
+    }
+    if (IsCharacterOnline(chr) == 1) {
+        MessageBoxW(g_hwndMain, L"Character must be offline to rename.",
+            L"Character Online", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    int r = MessageBoxW(g_hwndMain,
+        (std::wstring(L"Rename '") + chr + L"' to '" + newName + L"'?\r\n\r\nContinue?").c_str(),
+        L"Confirm Rename", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
+    if (r != IDYES) return;
+    RunQuery(L"UPDATE character_data SET name='" + std::wstring(newName) +
+             L"' WHERE LOWER(name)=LOWER('" + std::wstring(chr) + L"')");
+    SetGameResult(std::wstring(L"'") + chr + L"' renamed to '" + newName + L"'.\r\n\r\n"
+        L"Update the Character field if you want to make further changes to this character.");
+}
+
+static void DoSetSurname() {
+    if (!CheckServerRunning(L"Set Surname")) return;
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndProCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name in the Character field.",
+            L"Character Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    wchar_t sname[64] = {};
+    if (g_hwndProSurname) GetWindowTextW(g_hwndProSurname, sname, 64);
+    size_t len = wcslen(sname);
+    if (sname[0] && (len < 3 || len > 20)) {
+        MessageBoxW(g_hwndMain, L"Surname must be 3-20 characters (or blank to clear).",
+            L"Invalid Surname", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    if (sname[0]) {
+        for (size_t i = 0; i < len; i++) {
+            if (!iswalpha(sname[i]) && sname[i] != L'\'' ) {
+                MessageBoxW(g_hwndMain, L"Surname must contain only letters (apostrophe allowed).",
+                    L"Invalid Surname", MB_OK | MB_ICONWARNING);
+                return;
+            }
+        }
+    }
+    if (IsCharacterOnline(chr) == 1) {
+        MessageBoxW(g_hwndMain, L"Character must be offline to change surname.",
+            L"Character Online", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    std::wstring display = sname[0] ? std::wstring(L"'") + sname + L"'" : L"(clear surname)";
+    int r = MessageBoxW(g_hwndMain,
+        (std::wstring(L"Set surname for '") + chr + L"' to " + display + L"?\r\n\r\nContinue?").c_str(),
+        L"Confirm Set Surname", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
+    if (r != IDYES) return;
+    RunQuery(L"UPDATE character_data SET last_name='" + std::wstring(sname) +
+             L"' WHERE LOWER(name)=LOWER('" + std::wstring(chr) + L"')");
+    SetGameResult(std::wstring(L"Surname set to ") + display + L" for '" + chr + L"'.");
+}
+
+static void DoSetAATitle() {
+    if (!CheckServerRunning(L"Set AA Title")) return;
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndProCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name in the Character field.",
+            L"Character Required", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    int sel = g_hwndProTitleCbo ?
+        (int)SendMessage(g_hwndProTitleCbo, CB_GETCURSEL, 0, 0) : 0;
+    if (sel == CB_ERR) return;
+    const wchar_t* titleNames[] = {
+        L"None (0)", L"General \x2014 Baron/Baroness (1)",
+        L"Archtype \x2014 Master/Brother/Veteran/Venerable (2)",
+        L"Class \x2014 Muse/Marshall/Sage/Duke (3)"
+    };
+    if (IsCharacterOnline(chr) == 1) {
+        MessageBoxW(g_hwndMain, L"Character must be offline to change AA title.",
+            L"Character Online", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    int r = MessageBoxW(g_hwndMain,
+        (std::wstring(L"Set AA title for '") + chr + L"' to:\r\n\r\n" +
+         titleNames[sel] + L"\r\n\r\nContinue?").c_str(),
+        L"Confirm Set AA Title", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
+    if (r != IDYES) return;
+    RunQuery(L"UPDATE character_data SET title=" + std::to_wstring(sel) +
+             L" WHERE LOWER(name)=LOWER('" + std::wstring(chr) + L"')");
+    SetGameResult(std::wstring(L"AA title set to ") + titleNames[sel] + L" for '" + chr + L"'.");
 }
 
 static void DoItemSearch() {
@@ -1963,13 +5132,13 @@ static void DoItemSearch() {
               L"FROM items WHERE LOWER(Name) LIKE LOWER('%" + std::wstring(search) + L"%') "
               L"ORDER BY Name LIMIT 50";
     }
-    std::wstring result = RunQuery(sql);
+    std::wstring result = RunQueryTable(sql);
     SetGameResult(std::wstring(L"Item search for '") + search + L"':\r\n\r\n" + result);
 }
 
 static void DoGiveItem() {
     wchar_t chr[128] = {};
-    GetWindowTextW(g_hwndGameCharName, chr, 128);
+    GetWindowTextW(g_hwndProCharName, chr, 128);
     if (!chr[0]) {
         MessageBoxW(g_hwndMain, L"Enter a character name.",
             L"Character Required", MB_OK | MB_ICONINFORMATION);
@@ -2209,9 +5378,9 @@ static void ShowTab(int idx) {
         ShowWindow(g_hwndPanels[i], i == idx ? SW_SHOW : SW_HIDE);
     switch (idx) {
         case TAB_STATUS:  RefreshStatusTab();    break;
+        case TAB_ZONES:   if(g_serverRunning) DoRefreshZones(); break;
         case TAB_BACKUP:  RefreshBackupList();   break;
         case TAB_NETWORK: RefreshNetworkTab();   break;
-        case TAB_GAME:    RefreshGameToolsTab(); break;
         default: break;
     }
 }
@@ -2242,6 +5411,74 @@ static void LayoutPanels() {
 static LRESULT CALLBACK PanelProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == WM_COMMAND)
         return SendMessageW(GetParent(hwnd), msg, wp, lp);
+
+    if (g_darkMode) {
+        switch (msg) {
+        case WM_ERASEBKGND:
+            if (g_hbrDark) {
+                RECT rc; GetClientRect(hwnd, &rc);
+                FillRect((HDC)wp, &rc, g_hbrDark);
+                return 1;
+            }
+            break;
+        case WM_CTLCOLORSTATIC:
+        case WM_CTLCOLORBTN: {
+            HDC hdc = (HDC)wp;
+            SetTextColor(hdc, CLR_DARK_TXT);
+            SetBkColor(hdc, CLR_DARK_BG);
+            return (LRESULT)g_hbrDark;
+        }
+        case WM_CTLCOLOREDIT:
+        case WM_CTLCOLORLISTBOX:
+        case WM_CTLCOLORSCROLLBAR: {
+            HDC hdc = (HDC)wp;
+            SetTextColor(hdc, CLR_DARK_TXT);
+            SetBkColor(hdc, CLR_DARK_CTL);
+            return (LRESULT)g_hbrDarkCtl;
+        }
+        case WM_DRAWITEM: {
+            DRAWITEMSTRUCT* dis = (DRAWITEMSTRUCT*)lp;
+            if (dis->CtlType == ODT_BUTTON) {
+                COLORREF bgCol = RGB(52, 52, 58);
+                COLORREF txtCol = RGB(210, 210, 215);
+                COLORREF borderCol = RGB(70, 70, 78);
+                if (dis->itemState & ODS_SELECTED) {
+                    bgCol = RGB(65, 65, 75);
+                    borderCol = RGB(90, 140, 200);
+                }
+                if (dis->itemState & ODS_DISABLED) {
+                    txtCol = RGB(100, 100, 105);
+                    borderCol = RGB(55, 55, 60);
+                }
+                HBRUSH hbr = CreateSolidBrush(bgCol);
+                FillRect(dis->hDC, &dis->rcItem, hbr);
+                DeleteObject(hbr);
+                HPEN hPen = CreatePen(PS_SOLID, 1, borderCol);
+                HPEN hOld = (HPEN)SelectObject(dis->hDC, hPen);
+                HBRUSH hOldBr = (HBRUSH)SelectObject(dis->hDC, GetStockObject(NULL_BRUSH));
+                RoundRect(dis->hDC, dis->rcItem.left, dis->rcItem.top,
+                         dis->rcItem.right, dis->rcItem.bottom, 4, 4);
+                SelectObject(dis->hDC, hOld);
+                SelectObject(dis->hDC, hOldBr);
+                DeleteObject(hPen);
+                SetBkMode(dis->hDC, TRANSPARENT);
+                SetTextColor(dis->hDC, txtCol);
+                wchar_t text[256] = {};
+                GetWindowTextW(dis->hwndItem, text, 256);
+                DrawTextW(dis->hDC, text, -1, &dis->rcItem,
+                         DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                return TRUE;
+            }
+            break;
+        }
+        } // end switch
+    } // end if(g_darkMode)
+
+    // Always forward WM_HSCROLL regardless of dark mode
+    if (msg == WM_HSCROLL) {
+        SendMessageW(GetParent(hwnd), msg, wp, lp);
+    }
+
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
@@ -2261,6 +5498,11 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         g_hFontMono = CreateFontW(13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
             DEFAULT_QUALITY, FIXED_PITCH | FF_MODERN, L"Consolas");
+
+        // Large bold font for player count banner
+        g_hFontLarge = CreateFontW(22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
 
         g_hwndStatus = CreateWindowExW(0, STATUSCLASSNAMEW, nullptr,
             WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP,
@@ -2292,26 +5534,34 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
 
         CreateStatusPanel(g_hwndPanels[TAB_STATUS]);
-        CreateAdminPanel(g_hwndPanels[TAB_ADMIN]);
         CreatePlayerPanel(g_hwndPanels[TAB_PLAYER]);
+        CreateGameToolsPanel(g_hwndPanels[TAB_GAME]);
+        CreateAdminPanel(g_hwndPanels[TAB_ADMIN]);
+        CreateZonePanel(g_hwndPanels[TAB_ZONES]);
+        CreateServerPanel(g_hwndPanels[TAB_SERVER]);
         CreateBackupPanel(g_hwndPanels[TAB_BACKUP]);
         CreateLogPanel(g_hwndPanels[TAB_LOG]);
         CreateNetworkPanel(g_hwndPanels[TAB_NETWORK]);
         CreateAdvancedPanel(g_hwndPanels[TAB_ADVANCED]);
-        CreateGameToolsPanel(g_hwndPanels[TAB_GAME]);
 
         for (int i = 0; i < NUM_TABS; ++i)
             ApplyFont(g_hwndPanels[i], g_hFont);
 
         // Re-apply mono font to result boxes (ApplyFont would overwrite them)
         if (g_hFontMono) {
-            if (g_hwndAdmResult)   SendMessage(g_hwndAdmResult,  WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
-            if (g_hwndPlrResult)   SendMessage(g_hwndPlrResult,  WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
-            if (g_hwndAdvResult)   SendMessage(g_hwndAdvResult,  WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
-            if (g_hwndLogText)     SendMessage(g_hwndLogText,    WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
-            if (g_hwndProcList)    SendMessage(g_hwndProcList,   WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
-            if (g_hwndGameResult)  SendMessage(g_hwndGameResult, WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
+            if (g_hwndAdmResult)    SendMessage(g_hwndAdmResult,    WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
+            if (g_hwndPlrResult)    SendMessage(g_hwndPlrResult,    WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
+            if (g_hwndAdvResult)    SendMessage(g_hwndAdvResult,    WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
+            if (g_hwndAdvSysResult) SendMessage(g_hwndAdvSysResult, WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
+            if (g_hwndLogText)      SendMessage(g_hwndLogText,      WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
+            if (g_hwndProcList)     SendMessage(g_hwndProcList,     WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
+            if (g_hwndGameResult)   SendMessage(g_hwndGameResult,   WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
+            if (g_hwndServerResult) SendMessage(g_hwndServerResult, WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
+            if (g_hwndStatusResult) SendMessage(g_hwndStatusResult, WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
+            if (g_hwndZoneResult)   SendMessage(g_hwndZoneResult,   WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
         }
+        if (g_hFontLarge && g_hwndPlayerCount)
+            SendMessage(g_hwndPlayerCount, WM_SETFONT, (WPARAM)g_hFontLarge, TRUE);
 
         SetTimer(hwnd, TIMER_POLL, POLL_MS, nullptr);
         PostMessage(hwnd, WM_STATUS_POLL, 0, 0);
@@ -2322,12 +5572,43 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         LayoutPanels();
         return 0;
 
+    case WM_ERASEBKGND:
+        if (g_darkMode && g_hbrDark) {
+            RECT rc; GetClientRect(hwnd, &rc);
+            FillRect((HDC)wp, &rc, g_hbrDark);
+            return 1;
+        }
+        break;
+
+    case WM_CTLCOLORSTATIC:
+    case WM_CTLCOLORBTN:
+        if (g_darkMode && g_hbrDark) {
+            HDC hdc = (HDC)wp;
+            SetTextColor(hdc, CLR_DARK_TXT);
+            SetBkColor(hdc, CLR_DARK_BG);
+            return (LRESULT)g_hbrDark;
+        }
+        break;
+
+    case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORLISTBOX:
+        if (g_darkMode && g_hbrDarkCtl) {
+            HDC hdc = (HDC)wp;
+            SetTextColor(hdc, CLR_DARK_TXT);
+            SetBkColor(hdc, CLR_DARK_CTL);
+            return (LRESULT)g_hbrDarkCtl;
+        }
+        break;
+
     case WM_TIMER:
         if (wp == TIMER_POLL && !g_operationBusy) {
             std::thread([hwnd]{
                 bool running = IsContainerRunning();
                 PostMessageW(hwnd, WM_STATUS_POLL, running ? 1 : 0, 0);
             }).detach();
+        } else if (wp == TIMER_LOG_REFRESH && !g_operationBusy) {
+            int curTab = TabCtrl_GetCurSel(g_hwndTab);
+            if (curTab == TAB_LOG) DoLoadLog();
         }
         return 0;
 
@@ -2347,16 +5628,35 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         int sourceTab = (int)wp;
 
         if (sourceTab == TAB_LOG) {
-            if (res->success)
+            if (res->success) {
+                g_logFullText = res->message;  // store for filtering
                 SetWindowTextW(g_hwndLogText, res->message.c_str());
-            else
+                DoApplyLogFilter();  // re-apply any active filter
+            } else {
                 SetWindowTextW(g_hwndLogText, L"Failed to load log.");
+            }
         } else if (sourceTab == TAB_ADVANCED) {
-            SetWindowTextW(g_hwndAdvResult, res->message.c_str());
-            if (!res->success)
-                MessageBoxW(hwnd, res->message.c_str(), L"Operation Failed", MB_OK | MB_ICONERROR);
+            // Docker system info goes to sysresult box; rebuild/fresh errors go to advresult
+            if (res->success && g_hwndAdvSysResult &&
+                GetWindowTextLengthW(g_hwndAdvSysResult) > 0) {
+                // sys info operations set text on g_hwndAdvSysResult directly before async
+                SetWindowTextW(g_hwndAdvSysResult, res->message.c_str());
+            } else {
+                if (g_hwndAdvResult) SetWindowTextW(g_hwndAdvResult, res->message.c_str());
+                if (!res->success)
+                    MessageBoxW(hwnd, res->message.c_str(), L"Operation Failed", MB_OK | MB_ICONERROR);
+            }
+        } else if (sourceTab == TAB_NETWORK) {
+            if (g_hwndNetStatusMsg)
+                SetWindowTextW(g_hwndNetStatusMsg, res->message.c_str());
+            SetStatus(L"Port test complete.");
+        } else if (sourceTab == TAB_GAME) {
+            if (g_hwndGameResult)
+                SetWindowTextW(g_hwndGameResult, res->message.c_str());
+        } else if (sourceTab == TAB_SERVER) {
+            if (g_hwndServerResult)
+                SetWindowTextW(g_hwndServerResult, res->message.c_str());
         } else {
-            // Backup/restore/export (TAB_BACKUP or Status tab start/stop)
             if (g_hwndBackupInfo)
                 SetWindowTextW(g_hwndBackupInfo, res->message.c_str());
             if (!res->success)
@@ -2384,7 +5684,72 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             int sel = TabCtrl_GetCurSel(g_hwndTab);
             ShowTab(sel);
         }
+        // Status bar custom draw for dark mode
+        if (g_darkMode && pnm->hwndFrom == g_hwndStatus && pnm->code == NM_CUSTOMDRAW) {
+            LPNMCUSTOMDRAW cd = (LPNMCUSTOMDRAW)lp;
+            if (cd->dwDrawStage == CDDS_PREPAINT) return CDRF_NOTIFYITEMDRAW;
+            if (cd->dwDrawStage == CDDS_ITEMPREPAINT) {
+                SetTextColor(cd->hdc, CLR_DARK_TXT);
+                SetBkColor(cd->hdc, CLR_DARK_BG);
+                return CDRF_NEWFONT;
+            }
+        }
         return 0;
+    }
+
+    case WM_DRAWITEM: {
+        DRAWITEMSTRUCT* dis = (DRAWITEMSTRUCT*)lp;
+        // Owner-draw buttons in dark mode — subtle flat style
+        if (g_darkMode && dis->CtlType == ODT_BUTTON) {
+            COLORREF bgCol = RGB(52, 52, 58);
+            COLORREF txtCol = RGB(210, 210, 215);
+            COLORREF borderCol = RGB(70, 70, 78);
+            if (dis->itemState & ODS_SELECTED) {
+                bgCol = RGB(65, 65, 75);
+                borderCol = RGB(90, 140, 200);
+            }
+            if (dis->itemState & ODS_DISABLED) {
+                txtCol = RGB(100, 100, 105);
+                borderCol = RGB(55, 55, 60);
+            }
+            HBRUSH hbr = CreateSolidBrush(bgCol);
+            FillRect(dis->hDC, &dis->rcItem, hbr);
+            DeleteObject(hbr);
+            // Subtle rounded-feel border
+            HPEN hPen = CreatePen(PS_SOLID, 1, borderCol);
+            HPEN hOld = (HPEN)SelectObject(dis->hDC, hPen);
+            HBRUSH hOldBr = (HBRUSH)SelectObject(dis->hDC, GetStockObject(NULL_BRUSH));
+            RoundRect(dis->hDC, dis->rcItem.left, dis->rcItem.top,
+                     dis->rcItem.right, dis->rcItem.bottom, 4, 4);
+            SelectObject(dis->hDC, hOld);
+            SelectObject(dis->hDC, hOldBr);
+            DeleteObject(hPen);
+            SetBkMode(dis->hDC, TRANSPARENT);
+            SetTextColor(dis->hDC, txtCol);
+            wchar_t text[256] = {};
+            GetWindowTextW(dis->hwndItem, text, 256);
+            DrawTextW(dis->hDC, text, -1, &dis->rcItem,
+                     DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            return TRUE;
+        }
+        break;
+    }
+
+    case WM_HSCROLL: {
+        // XP and AA slider notifications (range 4-40 = 1.00x to 10.00x)
+        if ((HWND)lp == g_hwndXpSlider && g_hwndXpLabel) {
+            int pos = (int)SendMessage(g_hwndXpSlider, TBM_GETPOS, 0, 0);
+            wchar_t buf[32];
+            swprintf_s(buf, L"%.2fx", pos / 4.0);
+            SetWindowTextW(g_hwndXpLabel, buf);
+        }
+        if ((HWND)lp == g_hwndAaSlider && g_hwndAaLabel) {
+            int pos = (int)SendMessage(g_hwndAaSlider, TBM_GETPOS, 0, 0);
+            wchar_t buf[32];
+            swprintf_s(buf, L"%.2fx", pos / 4.0);
+            SetWindowTextW(g_hwndAaLabel, buf);
+        }
+        break;
     }
 
     case WM_COMMAND: {
@@ -2392,6 +5757,14 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         switch (id) {
 
         // --- STATUS TAB ---
+        case IDC_BTN_SET_MOTD:
+            DoSetMOTD();
+            break;
+
+        case IDC_BTN_RESTART_SERVER:
+            if (!g_operationBusy) DoRestartServerAsync();
+            break;
+
         case IDC_BTN_START:
             if (g_operationBusy) break;
             if (g_serverRunning) {
@@ -2446,13 +5819,17 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
 
         // --- ADMIN TAB ---
-        case IDC_BTN_MAKE_GM:          DoMakeGM();          break;
-        case IDC_BTN_REMOVE_GM:        DoRemoveGM();        break;
-        case IDC_BTN_LIST_ACCOUNTS:    DoListAccounts();    break;
-        case IDC_BTN_RESET_PASSWORD:   DoResetPassword();   break;
-        case IDC_BTN_WHO_ONLINE:       DoWhoIsOnline();     break;
-        case IDC_BTN_RECENT_LOGINS:    DoRecentLogins();    break;
-        case IDC_BTN_IP_HISTORY:       DoIPHistory();       break;
+        case IDC_BTN_MAKE_GM:          DoMakeGM();             break;
+        case IDC_BTN_REMOVE_GM:        DoRemoveGM();           break;
+        case IDC_BTN_LIST_ACCOUNTS:    DoListAccounts();       break;
+        case IDC_BTN_RESET_PASSWORD:   DoResetPassword();      break;
+        case IDC_BTN_SUSPEND_ACCT:     DoSuspendAccount();     break;
+        case IDC_BTN_UNSUSPEND_ACCT:   DoUnsuspendAccount();   break;
+        case IDC_BTN_BAN_ACCT:         DoBanAccount();         break;
+        case IDC_BTN_UNBAN_ACCT:       DoUnbanAccount();       break;
+        case IDC_BTN_SERVER_STATS:     DoServerStats();        break;
+        case IDC_BTN_VIEW_BANS:        DoViewBans();           break;
+        case IDC_BTN_DELETE_CHAR:      DoDeleteCharacter();    break;
 
         // --- PLAYER TAB ---
         case IDC_BTN_PLR_LIST_CHARS:   DoPlrListChars();    break;
@@ -2463,9 +5840,12 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case IDC_BTN_MOVE_TO_BIND:     DoMoveToBind();      break;
         case IDC_BTN_FIND_ZONE:        DoFindZone();        break;
         case IDC_BTN_MOVE_TO_ZONE:     DoMoveToZone();      break;
-        case IDC_BTN_GIVE_PLAT:        DoGivePlatinum();    break;
         case IDC_BTN_LIST_CORPSES:     DoListCorpses();     break;
         case IDC_BTN_CORPSES_BY_CHAR:  DoCorpsesByChar();   break;
+        case IDC_BTN_PLR_SEARCH:       DoSearchCharacters();break;
+        case IDC_BTN_WHO_ONLINE:       DoWhoIsOnline();     break;
+        case IDC_BTN_RECENT_LOGINS:    DoRecentLogins();    break;
+        case IDC_BTN_IP_HISTORY:       DoIPHistory();       break;
 
         // --- BACKUP TAB ---
         case IDC_BTN_BACKUP_NOW:
@@ -2496,16 +5876,33 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case IDC_BTN_REFRESH_LOG:
             DoLoadLog();
             break;
+        case IDC_BTN_APPLY_FILTER:
+            DoApplyLogFilter();
+            break;
+        case IDC_CHK_AUTO_REFRESH: {
+            HWND chkAR = GetDlgItem(g_hwndPanels[TAB_LOG], IDC_CHK_AUTO_REFRESH);
+            bool on = chkAR && (SendMessage(chkAR, BM_GETCHECK, 0, 0) == BST_CHECKED);
+            if (on)
+                SetTimer(hwnd, TIMER_LOG_REFRESH, 30000, nullptr);
+            else
+                KillTimer(hwnd, TIMER_LOG_REFRESH);
+            break;
+        }
 
         // --- NETWORK TAB ---
         case IDC_BTN_CHANGE_NETWORK:  DoChangeNetwork();   break;
         case IDC_BTN_NET_CONFIRM:     DoConfirmNetwork();  break;
         case IDC_BTN_WRITE_EQHOST:    DoWriteEqhost();     break;
+        case IDC_BTN_TEST_PORT:       DoTestPort();        break;
+        case IDC_BTN_COPY_IP:         DoCopyIP();          break;
 
         // --- ADVANCED TAB ---
-        case IDC_BTN_REBUILD:     DoRebuild();      break;
-        case IDC_BTN_START_FRESH: DoStartFresh();   break;
-        case IDC_BTN_COPY_EQHOST: DoCopyEqhost();   break;
+        case IDC_BTN_REBUILD:          DoRebuild();         break;
+        case IDC_BTN_START_FRESH:      DoStartFresh();      break;
+        case IDC_BTN_COPY_EQHOST:      DoCopyEqhost();      break;
+        case IDC_BTN_DOCKER_LOGS:      DoDockerLogs();      break;
+        case IDC_BTN_DISK_USAGE:       DoDiskUsage();       break;
+        case IDC_BTN_CONTAINER_STATS:  DoContainerStats();  break;
 
         case IDC_BTN_OPEN_FOLDER:
             ShellExecuteW(nullptr, L"open", g_installDir,
@@ -2526,12 +5923,16 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
 
         case IDC_CHK_NO_BACKUP: {
-            HWND chkNB = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_CHK_NO_BACKUP);
-            HWND cboR  = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_BACKUP_RETENTION);
+            HWND chkNB  = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_CHK_NO_BACKUP);
+            HWND cboR   = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_BACKUP_RETENTION);
+            HWND chkAOT = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_CHK_ALWAYS_ON_TOP);
+            HWND chkDM  = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_CHK_DARK_MODE);
             bool noBackup = (SendMessage(chkNB, BM_GETCHECK, 0, 0) == BST_CHECKED);
+            bool aot = chkAOT ? (SendMessage(chkAOT, BM_GETCHECK, 0, 0) == BST_CHECKED) : false;
+            bool dm  = chkDM  ? (SendMessage(chkDM,  BM_GETCHECK, 0, 0) == BST_CHECKED) : false;
             int sel = cboR ? (int)SendMessage(cboR, CB_GETCURSEL, 0, 0) : 1;
             int keep = (sel==0?5 : sel==1?10 : sel==2?20 : 0);
-            SaveSettings(noBackup, keep);
+            SaveSettings(noBackup, keep, aot, dm);
             if (noBackup)
                 MessageBoxW(hwnd,
                     L"Warning: backups will NOT be taken when stopping the server.\n"
@@ -2542,23 +5943,181 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
         case IDC_BACKUP_RETENTION: {
             if (HIWORD(wp) == CBN_SELCHANGE) {
-                HWND chkNB = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_CHK_NO_BACKUP);
-                HWND cboR  = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_BACKUP_RETENTION);
-                bool noBackup = chkNB ?
-                    (SendMessage(chkNB, BM_GETCHECK, 0, 0) == BST_CHECKED) : false;
+                HWND chkNB  = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_CHK_NO_BACKUP);
+                HWND cboR   = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_BACKUP_RETENTION);
+                HWND chkAOT = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_CHK_ALWAYS_ON_TOP);
+                HWND chkDM  = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_CHK_DARK_MODE);
+                bool noBackup = chkNB ? (SendMessage(chkNB, BM_GETCHECK, 0, 0) == BST_CHECKED) : false;
+                bool aot = chkAOT ? (SendMessage(chkAOT, BM_GETCHECK, 0, 0) == BST_CHECKED) : false;
+                bool dm  = chkDM  ? (SendMessage(chkDM,  BM_GETCHECK, 0, 0) == BST_CHECKED) : false;
                 int sel = (int)SendMessage(cboR, CB_GETCURSEL, 0, 0);
                 int keep = (sel==0?5 : sel==1?10 : sel==2?20 : 0);
-                SaveSettings(noBackup, keep);
+                SaveSettings(noBackup, keep, aot, dm);
                 PruneOldBackups(keep);
             }
             break;
         }
 
-        // --- GAME TOOLS TAB ---
-        case IDC_BTN_ITEM_SEARCH:    DoItemSearch();     break;
-        case IDC_BTN_GIVE_ITEM:      DoGiveItem();       break;
-        case IDC_BTN_SET_ERA:        DoSetEra();         break;
-        case IDC_BTN_SET_ZONE_COUNT: DoSetZoneCount();   break;
+        case IDC_CHK_ALWAYS_ON_TOP: {
+            HWND chkAOT = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_CHK_ALWAYS_ON_TOP);
+            HWND chkNB  = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_CHK_NO_BACKUP);
+            HWND cboR   = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_BACKUP_RETENTION);
+            HWND chkDM  = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_CHK_DARK_MODE);
+            bool aot      = (SendMessage(chkAOT, BM_GETCHECK, 0, 0) == BST_CHECKED);
+            bool noBackup = chkNB ? (SendMessage(chkNB, BM_GETCHECK, 0, 0) == BST_CHECKED) : false;
+            bool dm  = chkDM  ? (SendMessage(chkDM,  BM_GETCHECK, 0, 0) == BST_CHECKED) : false;
+            int sel  = cboR ? (int)SendMessage(cboR, CB_GETCURSEL, 0, 0) : 1;
+            int keep = (sel==0?5 : sel==1?10 : sel==2?20 : 0);
+            SaveSettings(noBackup, keep, aot, dm);
+            ApplyAlwaysOnTop(aot);
+            break;
+        }
+
+        case IDC_CHK_DARK_MODE: {
+            HWND chkDM  = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_CHK_DARK_MODE);
+            HWND chkAOT = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_CHK_ALWAYS_ON_TOP);
+            HWND chkNB  = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_CHK_NO_BACKUP);
+            HWND cboR   = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_BACKUP_RETENTION);
+            bool dm       = (SendMessage(chkDM,  BM_GETCHECK, 0, 0) == BST_CHECKED);
+            bool aot      = chkAOT ? (SendMessage(chkAOT, BM_GETCHECK, 0, 0) == BST_CHECKED) : false;
+            bool noBackup = chkNB  ? (SendMessage(chkNB,  BM_GETCHECK, 0, 0) == BST_CHECKED) : false;
+            int sel  = cboR ? (int)SendMessage(cboR, CB_GETCURSEL, 0, 0) : 1;
+            int keep = (sel==0?5 : sel==1?10 : sel==2?20 : 0);
+            SaveSettings(noBackup, keep, aot, dm);
+            ApplyDarkMode(dm);
+            break;
+        }
+
+        // --- PRO TOOLS TAB ---
+        case IDC_BTN_ITEM_SEARCH:        DoItemSearch();         break;
+        case IDC_BTN_GIVE_ITEM:          DoGiveItem();           break;
+        case IDC_BTN_PRO_GIVE_PLAT:      DoProGivePlatinum();    break;
+        case IDC_BTN_PRO_SET_LEVEL:      DoSetCharLevel();       break;
+        case IDC_BTN_PRO_SET_AA:         DoSetAAPoints();        break;
+        case IDC_BTN_PRO_SET_CLASS:      DoSetCharClass();       break;
+        case IDC_BTN_PRO_SET_RACE:       DoSetCharRace();        break;
+        case IDC_BTN_PRO_SET_GENDER:     DoSetCharGender();      break;
+        case IDC_BTN_PRO_RENAME:         DoRenameCharacter();    break;
+        case IDC_BTN_PRO_SET_SURNAME:    DoSetSurname();         break;
+        case IDC_BTN_PRO_SET_TITLE:      DoSetAATitle();         break;
+        case IDC_BTN_SET_ERA:            DoSetEra();             break;
+        case IDC_BTN_SET_ZONE_COUNT:     DoSetZoneCount();       break;
+
+        // --- STATUS TAB: Repop & Announce ---
+        case IDC_BTN_REPOP_ZONES:        DoRepopZones();         break;
+        case IDC_BTN_SEND_ANNOUNCE:      DoSendAnnouncement();   break;
+
+        // --- SERVER TAB: Rule Editor ---
+        case IDC_BTN_LOAD_RULES:         DoLoadRules();          break;
+        case IDC_BTN_SAVE_RULE:          DoSaveRule();           break;
+        case IDC_BTN_RESET_RULE:         DoResetRule();          break;
+        case IDC_BTN_APPLY_XP:           DoApplyXP();            break;
+        case IDC_BTN_APPLY_AA:           DoApplyAA();            break;
+
+        // --- SERVER TAB: Guild Manager ---
+        case IDC_BTN_LIST_GUILDS:        DoListGuilds();         break;
+        case IDC_BTN_CREATE_GUILD:       DoCreateGuild();        break;
+        case IDC_BTN_SET_GUILD_LEADER:   DoSetGuildLeader();     break;
+        case IDC_BTN_DISBAND_GUILD:      DoDisbandGuild();       break;
+        case IDC_BTN_VIEW_ROSTER:        DoViewGuildRoster();    break;
+
+        // --- SERVER TAB: Environment ---
+        case IDC_BTN_ENV_DEFAULT:        DoEnvDefault();         break;
+        case IDC_BTN_ENV_FIND_ZONE:      DoEnvFindZone();        break;
+
+        // --- ZONES TAB: ZEM ---
+        case IDC_BTN_ZEM_SAVE:           DoSaveZem();            break;
+        case IDC_BTN_ZEM_DEFAULT:        DoDefaultZem();         break;
+
+        // --- ZONES TAB: Zone list selection loads ZEM ---
+        case IDC_ZONE_LIST: {
+            if (HIWORD(wp) == LBN_SELCHANGE) {
+                DoLoadZem();
+            }
+            break;
+        }
+
+        // --- PRO TOOLS: Spawn, Spells, Factions, Skills ---
+        case IDC_BTN_SPAWN_BOSS:         DoSpawnBoss();          break;
+        case IDC_BTN_SPELL_SEARCH:       DoSpellSearch();        break;
+        case IDC_BTN_SCRIBE_SPELL:       DoScribeSpell();        break;
+        case IDC_BTN_SCRIBE_ALL:         DoScribeAll();          break;
+        case IDC_BTN_LOAD_FACTIONS:      DoLoadFactions();       break;
+        case IDC_BTN_SET_FACTION:        DoSetFaction();         break;
+        case IDC_BTN_FACTION_ALLY:       DoSetFaction(2000);     break;
+        case IDC_BTN_FACTION_WARMLY:     DoSetFaction(1100);     break;
+        case IDC_BTN_FACTION_INDIFF:     DoSetFaction(0);        break;
+        case IDC_BTN_FACTION_KOS:        DoSetFaction(-2000);    break;
+        case IDC_BTN_MAX_SKILLS:         DoMaxSkills();          break;
+
+        // --- PLAYER TOOLS: Loot Viewer ---
+        case IDC_BTN_LOOT_BY_NPC:        DoLootByNPC();          break;
+        case IDC_BTN_LOOT_BY_ITEM:       DoLootByItem();         break;
+
+        // --- PRO TOOLS: Skill Editor ---
+        case IDC_BTN_SKILL_SEARCH:       DoSkillSearch();        break;
+        case IDC_BTN_SET_SKILL:          DoSetSkill();           break;
+        case IDC_BTN_LOAD_SKILLS:        DoLoadSkills();         break;
+
+        // --- ADMIN TOOLS: GM/GodMode ---
+        case IDC_BTN_TOGGLE_GM:          DoToggleGM();           break;
+        case IDC_BTN_TOGGLE_GODMODE:     DoToggleGodMode();      break;
+
+        // --- SERVER TAB: Zone Environment ---
+        case IDC_BTN_ENV_LOAD:           DoEnvLoad();            break;
+        case IDC_BTN_ENV_SAVE:           DoEnvSave();            break;
+
+        // --- STATUS: Zone Management ---
+        case IDC_BTN_REFRESH_ZONES:      DoRefreshZones();       break;
+        case IDC_BTN_STOP_ZONE:          DoStopZone();           break;
+        case IDC_BTN_RESTART_ZONE:       DoRestartZone();        break;
+        case IDC_BTN_START_ZONE:         DoStartZone();          break;
+        case IDC_BTN_FIND_ZONE_STATUS:   DoFindZoneStatus();     break;
+
+        // --- STATUS: Boss Management ---
+        case IDC_BTN_CHECK_BOSS:         DoCheckBoss();          break;
+        case IDC_BTN_DESPAWN_BOSS:       DoDespawnBoss();        break;
+        case IDC_BTN_LIST_ACTIVE_BOSS:   DoListActiveBosses();   break;
+
+        // --- BACKUP TAB: Clone + DB Size ---
+        case IDC_BTN_CLONE_CHAR:         DoCloneCharacter();     break;
+        case IDC_BTN_DB_SIZE:            DoDbSize();             break;
+
+        // --- SERVER TAB: Rule List selection ---
+        case IDC_RULE_LIST: {
+            if (HIWORD(wp) == LBN_SELCHANGE) {
+                int sel = (int)SendMessage(g_hwndRuleList, LB_GETCURSEL, 0, 0);
+                if (sel != LB_ERR && sel < (int)g_rulesFiltered.size()) {
+                    SetWindowTextW(g_hwndRuleSelected, g_rulesFiltered[sel].name.c_str());
+                    SetWindowTextW(g_hwndRuleValue, g_rulesFiltered[sel].value.c_str());
+                }
+            }
+            break;
+        }
+
+        // --- SERVER TAB: Rule Search (filter on Enter) ---
+        case IDC_RULE_SEARCH: {
+            if (HIWORD(wp) == EN_CHANGE && !g_rules.empty()) {
+                // Re-filter rule list
+                wchar_t filterBuf[256] = {};
+                GetWindowTextW(g_hwndRuleSearch, filterBuf, 256);
+                std::wstring filter = filterBuf;
+                for (auto& c : filter) c = towlower(c);
+                g_rulesFiltered.clear();
+                SendMessage(g_hwndRuleList, LB_RESETCONTENT, 0, 0);
+                for (auto& r : g_rules) {
+                    if (!filter.empty()) {
+                        std::wstring nameLo = r.name;
+                        for (auto& c : nameLo) c = towlower(c);
+                        if (nameLo.find(filter) == std::wstring::npos) continue;
+                    }
+                    g_rulesFiltered.push_back(r);
+                    std::wstring display = r.name + L" = " + r.value;
+                    SendMessageW(g_hwndRuleList, LB_ADDSTRING, 0, (LPARAM)display.c_str());
+                }
+            }
+            break;
+        }
 
         } // end switch id
         return 0;
@@ -2566,12 +6125,17 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_GETMINMAXINFO: {
         MINMAXINFO* mmi = (MINMAXINFO*)lp;
-        mmi->ptMinTrackSize = { 900, 600 };
+        mmi->ptMinTrackSize = { 1000, 780 };
         return 0;
     }
 
     case WM_DESTROY:
         KillTimer(hwnd, TIMER_POLL);
+        KillTimer(hwnd, TIMER_LOG_REFRESH);
+        if (g_hbrDark)       DeleteObject(g_hbrDark);
+        if (g_hbrDarkCtl)    DeleteObject(g_hbrDarkCtl);
+        if (g_hbrDarkAccent) DeleteObject(g_hbrDarkAccent);
+        if (g_hFontLarge)    DeleteObject(g_hFontLarge);
         PostQuitMessage(0);
         return 0;
     }
@@ -2670,16 +6234,26 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow) {
 
     g_hwndMain = CreateWindowExW(0, APP_CLASS, APP_TITLE,
         WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, 960, 640,
+        CW_USEDEFAULT, CW_USEDEFAULT, 1100, 860,
         nullptr, nullptr, hInst, nullptr);
     if (!g_hwndMain) return 1;
 
     ShowWindow(g_hwndMain, nCmdShow);
     UpdateWindow(g_hwndMain);
 
+    if (GetAlwaysOnTop())
+        ApplyAlwaysOnTop(true);
+    if (GetDarkMode())
+        ApplyDarkMode(true);
+
     MSG msg{};
     while (GetMessage(&msg, nullptr, 0, 0)) {
-        if (!IsDialogMessage(g_hwndMain, &msg)) {
+        // Let mousewheel messages pass through directly to controls
+        // (IsDialogMessage eats them, breaking combo box scrolling)
+        if (msg.message == WM_MOUSEWHEEL || msg.message == WM_MOUSEHWHEEL) {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        } else if (!IsDialogMessage(g_hwndMain, &msg)) {
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
