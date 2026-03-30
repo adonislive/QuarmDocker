@@ -180,7 +180,7 @@ Based on code frame from [EQMacEmuDockerHub](https://github.com/jcon321/EQMacEmu
 
 ## Changelog
 
-### v1.1.0
+### v0.997
 - **Status tab** — Added server name field to change the name shown at server select (previously hardcoded as "New Devbox Server")
 - **Status tab** — Added login marquee field to change the scrolling message shown at the login screen (previously hardcoded as "Welcome to EQMacEmu")
 - **Status tab** — App version number now displayed in the top-right corner
