@@ -128,6 +128,7 @@ namespace fs = std::filesystem;
 
 static const wchar_t* APP_CLASS   = L"QuarmServerManager";
 static const wchar_t* APP_TITLE   = L"Quarm Docker Server";
+static const wchar_t* APP_VERSION = L"v0.997";
 static const wchar_t* PANEL_CLASS = L"QSMPanel";
 static const wchar_t* CONTAINER   = L"quarm-server";
 static const int      NUM_TABS    = 10;
@@ -228,7 +229,6 @@ static const wchar_t* TAB_LABELS[NUM_TABS] = {
 #define IDC_CHK_AUTO_REFRESH     5903
 
 // --- Network: new controls ---
-#define IDC_BTN_TEST_PORT        6000
 #define IDC_BTN_COPY_IP          6001
 #define IDC_NET_MODE_LABEL       6002
 
@@ -354,6 +354,12 @@ static const wchar_t* TAB_LABELS[NUM_TABS] = {
 #define IDC_ENV_FIND_EDIT        6533
 #define IDC_BTN_ENV_FIND_ZONE    6534
 
+// --- Status tab: server name + login marquee ---
+#define IDC_STATUS_SERVERNAME_EDIT  6540
+#define IDC_BTN_SET_SERVERNAME      6541
+#define IDC_STATUS_MARQUEE_EDIT     6542
+#define IDC_BTN_SET_MARQUEE         6543
+
 // --- Timers ---
 #define TIMER_LOG_REFRESH        2
 
@@ -441,6 +447,9 @@ static HBRUSH    g_hbrDarkAccent = nullptr;  // button/tab face brush
 // Status tab handles (hoisted)
 static HWND g_hwndStateLabel   = nullptr;
 static HWND g_hwndUptimeLabel  = nullptr;
+static HWND g_hwndVersionLabel   = nullptr;
+static HWND g_hwndServerNameEdit = nullptr;
+static HWND g_hwndMarqueeEdit    = nullptr;
 static HWND g_hwndProcList     = nullptr;
 static HWND g_hwndMotdEdit     = nullptr;
 static HWND g_hwndPlayerCount  = nullptr;
@@ -472,6 +481,7 @@ static HWND g_hwndGameEraCbo   = nullptr;
 static HWND g_hwndGameZoneCbo  = nullptr;
 static HWND g_hwndGameEraCur   = nullptr;
 static HWND g_hwndGameZoneCur  = nullptr;
+static bool g_eraUserDirty     = false;  // true when user changed era dropdown but hasn't applied yet
 
 // Admin panel handles
 static HWND g_hwndAdmResult    = nullptr;
@@ -554,6 +564,59 @@ static std::atomic<bool> g_stopPolling{ false };
 // ============================================================
 // UTILITY FUNCTIONS
 // ============================================================
+
+// Locate Docker Desktop.exe using three strategies:
+//   1. Registry: Docker Inc. install key (covers custom drive letters)
+//   2. Registry: Windows Uninstall key InstallLocation
+//   3. Common paths enumerated across all logical drive letters
+//   4. Caller falls back to ShellExecute by name if empty string returned
+static std::wstring FindDockerDesktopExe() {
+    const struct { HKEY root; const wchar_t* subkey; const wchar_t* value; } regLocations[] = {
+        { HKEY_LOCAL_MACHINE, L"SOFTWARE\\Docker Inc.\\Docker Desktop",                                           L"InstallPath"     },
+        { HKEY_LOCAL_MACHINE, L"SOFTWARE\\WOW6432Node\\Docker Inc.\\Docker Desktop",                              L"InstallPath"     },
+        { HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Docker Desktop",         L"InstallLocation" },
+        { HKEY_LOCAL_MACHINE, L"SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Docker Desktop", L"InstallLocation" },
+        { HKEY_CURRENT_USER,  L"SOFTWARE\\Docker Inc.\\Docker Desktop",                                           L"InstallPath"     },
+    };
+    for (auto& loc : regLocations) {
+        HKEY hKey = nullptr;
+        if (RegOpenKeyExW(loc.root, loc.subkey, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+            wchar_t buf[MAX_PATH] = {};
+            DWORD size = sizeof(buf);
+            DWORD type = 0;
+            if (RegQueryValueExW(hKey, loc.value, nullptr, &type, (LPBYTE)buf, &size) == ERROR_SUCCESS
+                && (type == REG_SZ || type == REG_EXPAND_SZ) && buf[0]) {
+                RegCloseKey(hKey);
+                std::wstring path = buf;
+                if (!path.empty() && (path.back() == L'\\' || path.back() == L'/'))
+                    path.pop_back();
+                std::wstring exe = path;
+                if (_wcsicmp(exe.size() >= 4 ? exe.c_str() + exe.size() - 4 : L"", L".exe") != 0)
+                    exe += L"\\Docker Desktop.exe";
+                if (PathFileExistsW(exe.c_str()))
+                    return exe;
+            } else {
+                RegCloseKey(hKey);
+            }
+        }
+    }
+    // Enumerate all drive letters and check common paths
+    wchar_t drives[256] = {};
+    GetLogicalDriveStringsW(255, drives);
+    const wchar_t* relPaths[] = {
+        L"Program Files\\Docker\\Docker\\Docker Desktop.exe",
+        L"Program Files (x86)\\Docker\\Docker\\Docker Desktop.exe",
+        nullptr
+    };
+    for (wchar_t* d = drives; *d; d += wcslen(d) + 1) {
+        for (int i = 0; relPaths[i]; ++i) {
+            std::wstring full = std::wstring(d) + relPaths[i];
+            if (PathFileExistsW(full.c_str()))
+                return full;
+        }
+    }
+    return L"";  // caller should ShellExecute by name as last resort
+}
 
 static std::wstring ToWide(const std::string& s) {
     if (s.empty()) return {};
@@ -969,6 +1032,7 @@ static void CreateStatusPanel(HWND parent) {
     int y = 6;
     MakeLabel(parent, L"Server:", 20, y+2, 50, 22);
     g_hwndStateLabel = MakeLabel(parent, L"Checking...", 76, y, 140, 24, SS_SUNKEN);
+    g_hwndVersionLabel = MakeLabel(parent, APP_VERSION, 780, y+2, 60, 20);
     y += 26;
     MakeLabel(parent, L"Uptime:", 20, y+2, 50, 20);
     g_hwndUptimeLabel = MakeLabel(parent, L"", 76, y+2, 200, 20);
@@ -993,7 +1057,16 @@ static void CreateStatusPanel(HWND parent) {
     MakeButton(parent, L"Set Era", IDC_BTN_SET_ERA, 272, y, 72, 26);
     MakeLabel(parent, L"(restart required)", 352, y+4, 130, 20);
     y += 30;
-    // MOTD
+    // Server Name
+    MakeLabel(parent, L"Server Name:", 20, y+4, 88, 20);
+    g_hwndServerNameEdit = MakeEdit(parent, IDC_STATUS_SERVERNAME_EDIT, 114, y, 694, 24);
+    MakeButton(parent, L"Set Name", IDC_BTN_SET_SERVERNAME, 816, y, 76, 26);
+    y += 28;
+    // Login Marquee
+    MakeLabel(parent, L"Login Marquee:", 20, y+4, 100, 20);
+    g_hwndMarqueeEdit = MakeEdit(parent, IDC_STATUS_MARQUEE_EDIT, 124, y, 684, 24);
+    MakeButton(parent, L"Set Marquee", IDC_BTN_SET_MARQUEE, 816, y, 76, 26);
+    y += 28;    // MOTD
     MakeLabel(parent, L"MOTD:", 20, y+4, 42, 20);
     g_hwndMotdEdit = MakeEdit(parent, IDC_STATUS_MOTD_EDIT, 68, y, 740, 24);
     MakeButton(parent, L"Set MOTD", IDC_BTN_SET_MOTD, 816, y, 76, 26);
@@ -1026,6 +1099,10 @@ static void CreateStatusPanel(HWND parent) {
     g_hwndStatusResult = MakeResultBox(parent, IDC_STATUS_RESULT, 20, y, 940, 130);
 }
 
+// Forward declarations for server name / marquee loaders used in RefreshStatusTab
+static void DoLoadServerName();
+static void DoLoadMarquee();
+
 static void RefreshEraZone() {
     // Refresh era/zone "Current:" labels on Status tab — only when server is up
     if (!IsContainerRunning()) {
@@ -1052,7 +1129,7 @@ static void RefreshEraZone() {
         else if (d == L"Luclin") eraIdx = 3;
         else if (d == L"PoP") eraIdx = 4;
         else if (d == L"All") eraIdx = 5;
-        if (eraIdx >= 0 && g_hwndGameEraCbo)
+        if (eraIdx >= 0 && g_hwndGameEraCbo && !g_eraUserDirty)
             SendMessage(g_hwndGameEraCbo, CB_SETCURSEL, eraIdx, 0);
     }
     std::wstring zoneResult = RunQuery(L"SELECT dynamics FROM launcher LIMIT 1");
@@ -1104,6 +1181,11 @@ static void RefreshStatusTab() {
             if (!motdVal.empty() && motdVal != L"(no results)")
                 SetWindowTextW(g_hwndMotdEdit, motdVal.c_str());
         }
+        // Load server name and marquee (only once when fields are empty)
+        if (g_hwndServerNameEdit && GetWindowTextLengthW(g_hwndServerNameEdit) == 0)
+            DoLoadServerName();
+        if (g_hwndMarqueeEdit && GetWindowTextLengthW(g_hwndMarqueeEdit) == 0)
+            DoLoadMarquee();
         // Zone list refreshes only on explicit Refresh click, not every poll
     } else {
         SetWindowTextW(g_hwndStateLabel, L"STOPPED");
@@ -1865,14 +1947,18 @@ static void DoMoveToZone() {
     }
 
     if (online == 1) {
-        // Option C: character is online — offer camp-first or restart
         int r = MessageBoxW(g_hwndMain,
-            (std::wstring(L"Move '") + chr + L"' to zone '" + zone + L"'?\r\n\r\n" +
-             zoneInfo + L"\r\n\r\n"
-             L"Character is currently ONLINE. You can either:\r\n\r\n"
-             L"  YES = Move in DB + Restart server (all players disconnect briefly)\r\n"
-             L"  NO  = Cancel (have them camp to char select first, then try again)\r\n").c_str(),
-            L"Character Is Online", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+            (std::wstring(L"WARNING: '") + chr + L"' is currently ONLINE.\r\n\r\n"
+             L"This feature is designed to be used when the character is OFFLINE.\r\n"
+             L"Moving an online character may crash the server.\r\n\r\n"
+             L"If you continue:\r\n"
+             L"  - The zone will be updated in the database\r\n"
+             L"  - *** SERVER RESTART REQUIRED ***\r\n"
+             L"  - All connected players will be disconnected\r\n\r\n"
+             L"Recommended: have the player camp to character select first,\r\n"
+             L"then use Move to Zone while they are offline.\r\n\r\n"
+             L"Continue anyway and restart the server?").c_str(),
+            L"Character Is Online \x2014 Risk of Server Crash", MB_YESNO | MB_ICONERROR | MB_DEFBUTTON2);
         if (r != IDYES) {
             SetPlrResult(L"Cancelled. Have the character camp to character select first, then click Move to Zone again.");
             return;
@@ -2455,8 +2541,7 @@ static void CreateNetworkPanel(HWND parent) {
 
     MakeButton(parent, L"Change Network Setting", IDC_BTN_CHANGE_NETWORK, 20, 68, 180, 30);
     MakeButton(parent, L"Write eqhost.txt...",    IDC_BTN_WRITE_EQHOST,  210, 68, 150, 30);
-    MakeButton(parent, L"Test Port 6000",         IDC_BTN_TEST_PORT,     370, 68, 120, 30);
-    MakeButton(parent, L"Copy IP",                IDC_BTN_COPY_IP,       500, 68,  80, 30);
+    MakeButton(parent, L"Copy IP",                IDC_BTN_COPY_IP,       370, 68,  80, 30);
 
     g_hwndNetAdapterList = MakeListBox(parent, IDC_NET_ADAPTER_LIST, 20, 116, 400, 100);
     ShowWindow(g_hwndNetAdapterList, SW_HIDE);
@@ -2469,27 +2554,6 @@ static void CreateNetworkPanel(HWND parent) {
         20, 255, 520, 140, parent,
         (HMENU)(UINT_PTR)IDC_NET_EQHOST_CONTENT, g_hInst, nullptr);
     g_hwndNetStatusMsg = MakeLabel(parent, L"", 20, 410, 800, 40);
-}
-
-static void DoTestPort() {
-    if (g_operationBusy) return;
-    SetBusy(true);
-    SetStatus(L"Testing port 6000...");
-    if (g_hwndNetStatusMsg)
-        SetWindowTextW(g_hwndNetStatusMsg, L"Testing port 6000, please wait...");
-    std::thread([]{
-        std::string out = RunCommand(
-            L"powershell -NoProfile -Command \""
-            L"$r = Test-NetConnection -ComputerName localhost -Port 6000 -WarningAction SilentlyContinue;"
-            L"if($r.TcpTestSucceeded){'OPEN'}else{'CLOSED'}\"");
-        std::wstring result = ToWide(TrimRight(out));
-        std::wstring msg = (result.find(L"OPEN") != std::wstring::npos)
-            ? L"\x2714 Port 6000 is OPEN \x2014 login server is reachable on this machine."
-            : L"\x2716 Port 6000 is CLOSED \x2014 login server may not be running or is blocked by firewall.";
-        // Must update UI from main thread context — use PostMessage
-        auto* res = new AsyncResult{ true, msg };
-        PostMessageW(g_hwndMain, WM_ASYNC_DONE, TAB_NETWORK, (LPARAM)res);
-    }).detach();
 }
 
 static void DoCopyIP() {
@@ -3792,15 +3856,19 @@ static void DoLootByNPC() {
     std::wstring safe;
     for (wchar_t c : std::wstring(term)) {
         if (c == L'\'') safe += L"''";
+        else if (c == L'`') continue;
         else safe += c;
     }
+    std::wstring safeUnderscore = safe;
+    for (auto& c : safeUnderscore) if (c == L' ') c = L'_';
     std::wstring sql =
         L"SELECT nt.name AS npc, it.Name AS item, ROUND(lde.chance,1) AS pct "
         L"FROM npc_types nt "
         L"JOIN loottable_entries lte ON lte.loottable_id=nt.loottable_id "
         L"JOIN lootdrop_entries lde ON lde.lootdrop_id=lte.lootdrop_id "
         L"JOIN items it ON it.id=lde.item_id "
-        L"WHERE nt.name LIKE '%" + safe + L"%' "
+        L"WHERE REPLACE(LOWER(nt.name),'_',' ') LIKE LOWER('%" + safe + L"%') "
+        L"OR LOWER(nt.name) LIKE LOWER('%" + safeUnderscore + L"%') "
         L"ORDER BY nt.name, lde.chance DESC LIMIT 200";
     SetGameResult(L"Loot by NPC results:\r\n\r\n" + RunQueryTable(sql));
 }
@@ -3817,15 +3885,19 @@ static void DoLootByItem() {
     std::wstring safe;
     for (wchar_t c : std::wstring(term)) {
         if (c == L'\'') safe += L"''";
+        else if (c == L'`') continue;
         else safe += c;
     }
+    std::wstring safeUnderscore = safe;
+    for (auto& c : safeUnderscore) if (c == L' ') c = L'_';
     std::wstring sql =
         L"SELECT it.Name AS item, nt.name AS dropped_by, ROUND(lde.chance,1) AS pct "
         L"FROM items it "
         L"JOIN lootdrop_entries lde ON lde.item_id=it.id "
         L"JOIN loottable_entries lte ON lte.lootdrop_id=lde.lootdrop_id "
         L"JOIN npc_types nt ON nt.loottable_id=lte.loottable_id "
-        L"WHERE it.Name LIKE '%" + safe + L"%' "
+        L"WHERE REPLACE(LOWER(it.Name),'_',' ') LIKE LOWER('%" + safe + L"%') "
+        L"OR LOWER(it.Name) LIKE LOWER('%" + safeUnderscore + L"%') "
         L"ORDER BY it.Name, lde.chance DESC LIMIT 200";
     SetGameResult(L"Loot by Item results:\r\n\r\n" + RunQueryTable(sql));
 }
@@ -4023,23 +4095,52 @@ static void DoToggleGodMode() {
         MessageBoxW(g_hwndMain, L"Enter a character name.", L"Toggle God Mode", MB_OK | MB_ICONINFORMATION);
         return;
     }
+    // Fetch account status and current god mode flags in one query
     std::wstring checkSql =
-        L"SELECT a.status FROM account a JOIN character_data cd ON cd.account_id=a.id "
+        L"SELECT a.status, a.flymode, a.gmspeed, a.gminvul, a.hideme "
+        L"FROM account a JOIN character_data cd ON cd.account_id=a.id "
         L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"')";
     std::string statusOut = TrimRight(RunCommand(std::wstring(L"docker exec ") + CONTAINER +
         L" mariadb -N -e \"" + checkSql + L"\" quarm"));
-    if (statusOut.empty() || statusOut.find("255") == std::string::npos) {
-        SetAdmResult(L"Account for '" + std::wstring(chr) + L"' does not have GM status (255).");
+    if (statusOut.empty()) {
+        SetAdmResult(std::wstring(L"Character '") + chr + L"' not found.");
         return;
     }
-    // Toggle invulnerable flag
-    RunQuery(L"UPDATE character_data SET invulnerable = IF(invulnerable=0, 1, 0) "
-             L"WHERE LOWER(name)=LOWER('" + std::wstring(chr) + L"')");
+    if (statusOut.find("255") == std::string::npos) {
+        SetAdmResult(L"Account for '" + std::wstring(chr) + L"' does not have GM status (255). Set GM first via Make GM.");
+        return;
+    }
+    // Parse flags from the data row — if any flag is on, toggle all off; otherwise toggle all on
+    bool anyOn = false;
+    {
+        std::istringstream ss(statusOut);
+        std::string line;
+        while (std::getline(ss, line)) {
+            std::istringstream ls(line);
+            std::string tok;
+            std::vector<std::string> cols;
+            while (std::getline(ls, tok, '\t')) cols.push_back(tok);
+            if (cols.size() >= 5) {
+                // cols: status, flymode, gmspeed, gminvul, hideme
+                for (int i = 1; i <= 4; ++i)
+                    if (!cols[i].empty() && cols[i] != "0") { anyOn = true; break; }
+                break;
+            }
+        }
+    }
+    std::wstring newVal = anyOn ? L"0" : L"1";
+    RunQuery(
+        L"UPDATE account a JOIN character_data cd ON cd.account_id=a.id "
+        L"SET a.flymode=" + newVal + L", a.gmspeed=" + newVal +
+        L", a.gminvul=" + newVal + L", a.hideme=" + newVal +
+        L" WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"')");
     std::wstring result = RunQueryTable(
-        L"SELECT name, invulnerable AS godmode FROM character_data WHERE LOWER(name)=LOWER('" +
-        std::wstring(chr) + L"')");
-    SetAdmResult(L"God Mode toggled for '" + std::wstring(chr) + L"'.\r\n\r\n" + result +
-                 L"\r\nCharacter must relog for change to take effect.");
+        L"SELECT a.name AS account, a.flymode, a.gmspeed, a.gminvul, a.hideme "
+        L"FROM account a JOIN character_data cd ON cd.account_id=a.id "
+        L"WHERE LOWER(cd.name)=LOWER('" + std::wstring(chr) + L"')");
+    std::wstring state = anyOn ? L"OFF" : L"ON";
+    SetAdmResult(L"God Mode toggled " + state + L" for '" + std::wstring(chr) + L"'.\r\n\r\n" +
+                 result + L"\r\nCharacter must relog for change to take effect.");
 }
 
 // ============================================================
@@ -5270,8 +5371,17 @@ static void DoItemSearch() {
         sql = L"SELECT id, Name, ItemType, Classes, Races, Slots, Price, StackSize "
               L"FROM items WHERE id=" + std::wstring(search);
     } else {
+        std::wstring safe;
+        for (wchar_t c : std::wstring(search)) {
+            if (c == L'\'') safe += L"''";
+            else if (c == L'`') continue;
+            else safe += c;
+        }
+        std::wstring safeUnderscore = safe;
+        for (auto& c : safeUnderscore) if (c == L' ') c = L'_';
         sql = L"SELECT id, Name, ItemType, Classes, Races, Slots, Price, StackSize "
-              L"FROM items WHERE LOWER(Name) LIKE LOWER('%" + std::wstring(search) + L"%') "
+              L"FROM items WHERE REPLACE(LOWER(Name),'_',' ') LIKE LOWER('%" + safe + L"%') "
+              L"OR LOWER(Name) LIKE LOWER('%" + safeUnderscore + L"%') "
               L"ORDER BY Name LIMIT 50";
     }
     std::wstring result = RunQueryTable(sql);
@@ -5334,10 +5444,10 @@ static void DoGiveItem() {
         return;
     }
 
-    // Find open general inventory slot (23-30), searching from highest
+    // Find open general inventory slot (22-29 = slotGeneral1-8), searching from highest
     std::wstring slotSql = L"SELECT slotid FROM character_inventory "
                            L"WHERE id=" + charIdStr +
-                           L" AND slotid BETWEEN 23 AND 30 ORDER BY slotid";
+                           L" AND slotid BETWEEN 22 AND 29 ORDER BY slotid";
     std::wstring slotResult = RunQuery(slotSql);
 
     bool slotUsed[8] = {};
@@ -5347,23 +5457,23 @@ static void DoGiveItem() {
             if (iswdigit(c)) { num += c; }
             else if (!num.empty()) {
                 int slot = _wtoi(num.c_str());
-                if (slot >= 23 && slot <= 30) slotUsed[slot - 23] = true;
+                if (slot >= 22 && slot <= 29) slotUsed[slot - 22] = true;
                 num.clear();
             }
         }
         if (!num.empty()) {
             int slot = _wtoi(num.c_str());
-            if (slot >= 23 && slot <= 30) slotUsed[slot - 23] = true;
+            if (slot >= 22 && slot <= 29) slotUsed[slot - 22] = true;
         }
     }
 
     int openSlot = -1;
     for (int i = 7; i >= 0; --i) {
-        if (!slotUsed[i]) { openSlot = 23 + i; break; }
+        if (!slotUsed[i]) { openSlot = 22 + i; break; }
     }
     if (openSlot == -1) {
         SetGameResult(std::wstring(L"Character '") + chr +
-            L"' has no open general inventory slots (23-30 all full).\r\n"
+            L"' has no open general inventory slots (slotGeneral1-8 all full).\r\n"
             L"Free up an inventory slot first.");
         return;
     }
@@ -5444,10 +5554,13 @@ static void DoSetEra() {
          L"  Character:DefaultExpansions = " + std::to_wstring(p.bitmask) + L"\r\n"
          L"  All existing account expansion flags\r\n"
          L"  Zone access restrictions\r\n\r\n"
-         L"Server will restart for this to take effect.\r\nRestart now?").c_str(),
+         L"*** SERVER RESTART REQUIRED ***\r\n"
+         L"All connected players will be disconnected.\r\n\r\n"
+         L"Restart now?").c_str(),
         L"Confirm Era Change", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
     if (r != IDYES) return;
 
+    g_eraUserDirty = false;
     SetGameResult(L"Applying era change...");
 
     RunQuery(L"UPDATE rule_values SET rule_value='" + std::wstring(p.eraNum) +
@@ -5463,7 +5576,9 @@ static void DoSetEra() {
         RunQuery(L"UPDATE zone SET min_status=0");
     }
 
-    SetGameResult(std::wstring(L"Era set to '") + p.name + L"'. Restarting server...");
+    SetGameResult(std::wstring(L"Era set to '") + p.name + L"'. Restarting server...\r\n\r\n"
+        L"Note: characters currently in zones restricted by this era will be moved\r\n"
+        L"to a safe zone (typically East Commons) on their next login.");
     DoRestartServerAsync();
 }
 
@@ -5623,6 +5738,171 @@ static LRESULT CALLBACK PanelProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
+
+// ============================================================
+// NEW OPERATIONS — Status Tab (Server Name + Login Marquee)
+// ============================================================
+
+static void DoLoadServerName() {
+    // longname lives in eqemu_config.json under server.world.longname
+    const wchar_t* relPaths[] = {
+        L"config\\eqemu_config.json",
+        L"eqemu_config.json",
+        nullptr
+    };
+    for (int i = 0; relPaths[i]; ++i) {
+        wchar_t cfgPath[MAX_PATH];
+        wcscpy_s(cfgPath, g_installDir);
+        PathAppendW(cfgPath, relPaths[i]);
+        std::ifstream f(cfgPath);
+        if (!f) continue;
+        std::string content((std::istreambuf_iterator<char>(f)),
+                             std::istreambuf_iterator<char>());
+        auto pos = content.find("\"longname\"");
+        if (pos == std::string::npos) continue;
+        pos = content.find(':', pos);
+        if (pos == std::string::npos) continue;
+        pos = content.find('"', pos);
+        if (pos == std::string::npos) continue;
+        ++pos;
+        auto end = content.find('"', pos);
+        if (end == std::string::npos) continue;
+        std::wstring val = ToWide(content.substr(pos, end - pos));
+        if (!val.empty() && g_hwndServerNameEdit)
+            SetWindowTextW(g_hwndServerNameEdit, val.c_str());
+        return;
+    }
+}
+
+static void DoLoadMarquee() {
+    // ticker lives in tblloginserversettings where type='ticker'
+    if (!IsContainerRunning()) return;
+    std::wstring result = RunQuery(
+        L"SELECT value FROM tblloginserversettings WHERE type='ticker' LIMIT 1");
+    if (result == L"(no results)") {
+        // No row yet — field stays blank, user can set one
+        return;
+    }
+    std::wstring val;
+    bool pastHeader = false;
+    for (auto c : result) {
+        if (c == L'\n') { pastHeader = true; continue; }
+        if (c == L'\r') continue;
+        if (pastHeader) val += c;
+    }
+    while (!val.empty() && (val.back() == L' ' || val.back() == L'\t')) val.pop_back();
+    if (!val.empty() && g_hwndMarqueeEdit)
+        SetWindowTextW(g_hwndMarqueeEdit, val.c_str());
+}
+
+static void DoSetServerName() {
+    wchar_t name[256] = {};
+    if (g_hwndServerNameEdit) GetWindowTextW(g_hwndServerNameEdit, name, 256);
+    if (!name[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a server name first.", L"Server Name", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    int r = MessageBoxW(g_hwndMain,
+        (std::wstring(L"Set server name to:\r\n\r\n\"") + name + L"\"\r\n\r\n"
+         L"*** SERVER RESTART REQUIRED ***\r\n"
+         L"All connected players will be disconnected.\r\n\r\n"
+         L"Continue and restart now?").c_str(),
+        L"Confirm Server Name Change", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+    if (r != IDYES) return;
+    // Try both possible locations
+    const wchar_t* relPaths[] = {
+        L"config\\eqemu_config.json",
+        L"eqemu_config.json",
+        nullptr
+    };
+    std::string content;
+    wchar_t foundPath[MAX_PATH] = {};
+    for (int i = 0; relPaths[i]; ++i) {
+        wchar_t cfgPath[MAX_PATH];
+        wcscpy_s(cfgPath, g_installDir);
+        PathAppendW(cfgPath, relPaths[i]);
+        std::ifstream fin(cfgPath);
+        if (fin) {
+            content = std::string((std::istreambuf_iterator<char>(fin)),
+                                   std::istreambuf_iterator<char>());
+            fin.close();
+            wcscpy_s(foundPath, cfgPath);
+            break;
+        }
+    }
+    if (content.empty()) {
+        SetWindowTextW(g_hwndStatusResult,
+            (std::wstring(L"Failed: eqemu_config.json not found.\r\n\r\n"
+             L"Looked in:\r\n  ") + g_installDir + L"\\config\\eqemu_config.json\r\n  "
+             + g_installDir + L"\\eqemu_config.json").c_str());
+        return;
+    }
+    auto pos = content.find("\"longname\"");
+    if (pos == std::string::npos) {
+        SetWindowTextW(g_hwndStatusResult,
+            (std::wstring(L"Failed: \"longname\" not found in ") + foundPath).c_str());
+        return;
+    }
+    pos = content.find(':', pos);
+    pos = content.find('"', pos);
+    auto end = content.find('"', pos + 1);
+    std::string newName(name, name + wcslen(name));
+    content = content.substr(0, pos + 1) + newName + content.substr(end);
+    std::ofstream fout(foundPath, std::ios::trunc);
+    if (!fout) {
+        SetWindowTextW(g_hwndStatusResult,
+            (std::wstring(L"Failed: could not write to ") + foundPath).c_str());
+        return;
+    }
+    fout << content;
+    fout.close();
+    SetWindowTextW(g_hwndStatusResult,
+        (std::wstring(L"Server name set to '") + name + L"'.\r\n\r\nRestarting server...").c_str());
+    DoRestartServerAsync();
+}
+
+static void DoSetMarquee() {
+    if (!CheckServerRunning(L"Set Login Marquee")) return;
+    wchar_t msg[512] = {};
+    if (g_hwndMarqueeEdit) GetWindowTextW(g_hwndMarqueeEdit, msg, 512);
+    if (!msg[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a marquee message first.", L"Login Marquee", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    int r = MessageBoxW(g_hwndMain,
+        (std::wstring(L"Set login screen marquee to:\r\n\r\n\"") + msg + L"\"\r\n\r\n"
+         L"This updates tblloginserversettings and takes effect\r\n"
+         L"immediately for new client connections.\r\n\r\n"
+         L"Continue?").c_str(),
+        L"Confirm Marquee Change", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
+    if (r != IDYES) return;
+    // First verify the table exists
+    std::wstring check = RunQuery(
+        L"SHOW TABLES LIKE 'tblloginserversettings'");
+    if (check == L"(no results)") {
+        SetWindowTextW(g_hwndStatusResult,
+            L"Failed: table 'tblloginserversettings' does not exist in the quarm database.\r\n\r\n"
+            L"The marquee text may be hardcoded in this server build.");
+        return;
+    }
+    std::wstring safe;
+    for (wchar_t c : std::wstring(msg)) {
+        if (c == L'\'') safe += L"''";
+        else safe += c;
+    }
+    RunQuery(
+        L"INSERT INTO tblloginserversettings (type, value) VALUES ('ticker', '" + safe + L"') "
+        L"ON DUPLICATE KEY UPDATE value='" + safe + L"'");
+    SetWindowTextW(g_hwndStatusResult,
+        (std::wstring(L"Login marquee set to '") + msg + L"'.\r\n\r\n"
+         L"Reconnect to the server select screen to see the change.").c_str());
+}
+
+
+
+
+
+
 
 static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
@@ -5903,6 +6183,14 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             DoSetMOTD();
             break;
 
+        case IDC_BTN_SET_SERVERNAME:
+            DoSetServerName();
+            break;
+
+        case IDC_BTN_SET_MARQUEE:
+            DoSetMarquee();
+            break;
+
         case IDC_BTN_RESTART_SERVER:
             if (!g_operationBusy) DoRestartServerAsync();
             break;
@@ -6031,11 +6319,16 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             break;
         }
 
+        case IDC_GAME_ERA_COMBO: {
+            if (HIWORD(wp) == CBN_SELCHANGE)
+                g_eraUserDirty = true;
+            break;
+        }
+
         // --- NETWORK TAB ---
         case IDC_BTN_CHANGE_NETWORK:  DoChangeNetwork();   break;
         case IDC_BTN_NET_CONFIRM:     DoConfirmNetwork();  break;
         case IDC_BTN_WRITE_EQHOST:    DoWriteEqhost();     break;
-        case IDC_BTN_TEST_PORT:       DoTestPort();        break;
         case IDC_BTN_COPY_IP:         DoCopyIP();          break;
 
         // --- ADVANCED TAB ---
@@ -6051,11 +6344,22 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 nullptr, nullptr, SW_SHOWNORMAL);
             break;
 
-        case IDC_BTN_OPEN_DOCKER:
-            ShellExecuteW(nullptr, L"open",
-                L"C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe",
-                nullptr, nullptr, SW_SHOWNORMAL);
+        case IDC_BTN_OPEN_DOCKER: {
+            std::wstring dockerExe = FindDockerDesktopExe();
+            if (!dockerExe.empty()) {
+                ShellExecuteW(nullptr, L"open", dockerExe.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+            } else {
+                HINSTANCE hr = ShellExecuteW(nullptr, L"open", L"Docker Desktop",
+                    nullptr, nullptr, SW_SHOWNORMAL);
+                if ((INT_PTR)hr <= 32) {
+                    MessageBoxW(g_hwndMain,
+                        L"Docker Desktop could not be found or launched.\n\n"
+                        L"Please open Docker Desktop manually from your Start Menu.",
+                        L"Docker Desktop Not Found", MB_OK | MB_ICONWARNING);
+                }
+            }
             break;
+        }
 
         case IDC_CHK_AUTOSTART: {
             HWND chk = GetDlgItem(g_hwndPanels[TAB_ADVANCED], IDC_CHK_AUTOSTART);
@@ -6292,15 +6596,8 @@ static bool DoStartupChecks() {
     GetModuleFileNameW(nullptr, g_installDir, MAX_PATH);
     PathRemoveFileSpecW(g_installDir);
 
-    const wchar_t* dockerPaths[] = {
-        L"C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe",
-        L"C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe",
-        nullptr
-    };
-    bool dockerInstalled = false;
-    for (int i = 0; dockerPaths[i]; ++i) {
-        if (PathFileExistsW(dockerPaths[i])) { dockerInstalled = true; break; }
-    }
+    // Check Docker is installed using registry + all drive letters
+    bool dockerInstalled = !FindDockerDesktopExe().empty();
     if (!dockerInstalled) {
         std::string out = RunCommand(L"docker --version");
         if (!out.empty() && out.find("Docker version") != std::string::npos)

@@ -67,7 +67,7 @@ Open the **Quarm Docker Server** app from your desktop shortcut. All server mana
 
 | Tab | What it does |
 |-----|-------------|
-| **Status** | Start, stop, and restart the server. Shows service health, uptime, and active player count. Set the server era (Classic through Planes of Power or All Expansions), change the Message of the Day, send server-wide announcements, and manage raid bosses (check, spawn, despawn, list active). |
+| **Status** | Start, stop, and restart the server. Shows service health, uptime, active player count, and app version. Set the server era (Classic through Planes of Power or All Expansions), change the server name shown at server select, change the login screen scrolling marquee, change the Message of the Day, send server-wide announcements, and manage raid bosses (check, spawn, despawn, list active). |
 | **Player Tools** | Look up characters by account or name, view inventory, currency, and corpses. Move stuck characters to their bind point or a specific zone. Search characters by level range and class. View recent logins, who is online, and IP history. Load and edit character faction standings with quick-set presets (Ally, Warmly, Indifferent, KOS). |
 | **Pro Tools** | Full character management — set level, AA points, race, class, gender, rename characters, set surnames, and assign AA titles. Give platinum, search and give items by name or ID, search and scribe spells (individually or all at once), view and edit individual skills or max all skills, and look up loot tables by NPC or item name. |
 | **Admin Tools** | Manage accounts — make/remove GM, list accounts, reset passwords, suspend/unsuspend, ban/unban, and view active bans. View server-wide statistics. Delete characters (with double confirmation). Toggle in-game GM flag and God Mode on individual characters. |
@@ -75,8 +75,24 @@ Open the **Quarm Docker Server** app from your desktop shortcut. All server mana
 | **Server** | Adjust server-wide XP and AA rate multipliers with sliders (1x–10x). Full rule editor — search, browse, and modify any server rule value. Guild manager — list guilds, create new guilds, set leaders, disband, and view rosters. |
 | **Backup & Restore** | Take manual backups, restore from a previous backup, export/import character data. Clone a character with all gear, AAs, and spells under a new name. View database size. |
 | **Log Viewer** | View live server logs from multiple sources (container stdout, eqemu_debug.log, world.log, crash.log). Filter log output by keyword, choose how many lines to display, and enable auto-refresh on a 30-second interval. |
-| **Network** | View current server address and network mode (Local, LAN, or WAN). Switch between local-only and LAN mode by selecting a network adapter. Write eqhost.txt directly to your EQ client folder, copy your IP to clipboard, and test port 6000 connectivity. |
+| **Network** | View current server address and network mode (Local, LAN, or WAN). Switch between local-only and LAN mode by selecting a network adapter. Write eqhost.txt directly to your EQ client folder and copy your IP to clipboard. |
 | **Advanced** | Rebuild the server image or wipe and start fresh. View Docker logs, disk usage, and container stats. Utilities to copy eqhost.txt, open the install folder, or launch Docker Desktop. Settings for dark mode, always-on-top, start with Windows, backup-on-stop toggle, and backup retention (keep last 5, 10, 20, or unlimited backups). |
+
+---
+
+## Customizing Your Server
+
+### Server Name
+The server name is what players see on the server select screen. To change it, go to the **Status** tab, edit the **Server Name** field, and click **Set Name**. A server restart is required for the change to take effect.
+
+### Login Screen Marquee
+The scrolling message players see on the login screen can be changed on the **Status** tab. Edit the **Login Marquee** field and click **Set Marquee**. A server restart is required.
+
+### Message of the Day
+The in-game MOTD is shown to players when they zone. Edit the **MOTD** field on the **Status** tab and click **Set MOTD**. This takes effect on the next zone-in and does not require a restart.
+
+### Server Era
+Select an era from the dropdown on the **Status** tab and click **Set Era**. This restricts zone access and expansion flags to the chosen era. A server restart is required. Characters in zones that become restricted will be moved to a safe zone (typically East Commons) on their next login.
 
 ---
 
@@ -116,7 +132,9 @@ Make sure Docker Desktop is open and running (look for the whale icon in the sys
 - Check that the server shows RUNNING in the Status tab and all services show RUNNING
 - Check that `eqhost.txt` contains the correct IP address
 - For LAN connections, make sure you are using the server machine's LAN IP, not `127.0.0.1`
-- Use the **Test Port 6000** button on the Network tab to verify connectivity
+
+**Docker Desktop won't open from the app**
+The app locates Docker Desktop automatically using the Windows registry and common install paths. If it still fails, open Docker Desktop manually from your Start Menu.
 
 **Firewall rules exit: 1 in the install log**
 The installer may not have had administrator rights. Right-click the installer and choose **Run as administrator**, or ask someone to run the firewall PowerShell commands manually from an elevated PowerShell prompt.
@@ -154,6 +172,23 @@ This removes the app, firewall rules, shortcuts, and install folder. Your Docker
 
 ## Credits
 
-Thanks to surron, darius, kicnlag, solar, and secrets for framework, ingenuity, grounding, advice, and space to code.  Thanks to Starrlord for Quality Assurance testing.
+Thanks to surron, darius, kicnlag, solar, and secrets for framework, ingenuity, grounding, advice, and space to code. Thanks to Starrlord for Quality Assurance testing.
 
 Based on code frame from [EQMacEmuDockerHub](https://github.com/jcon321/EQMacEmuDockerHub).
+
+---
+
+## Changelog
+
+### v1.1.0
+- **Status tab** — Added server name field to change the name shown at server select (previously hardcoded as "New Devbox Server")
+- **Status tab** — Added login marquee field to change the scrolling message shown at the login screen (previously hardcoded as "Welcome to EQMacEmu")
+- **Status tab** — App version number now displayed in the top-right corner
+- **Status tab** — Era change confirmation dialog now prominently warns that a server restart will disconnect all players, and notes that characters in restricted zones will be moved to East Commons on next login
+- **Status tab** — Era dropdown no longer reverts to the server value while the user has a pending unsaved change
+- **Admin Tools** — Fixed God Mode toggle to correctly use the `account` table (`flymode`, `gmspeed`, `gminvul`, `hideme`) instead of the non-existent `invulnerable` column
+- **Pro Tools** — Fixed Give Item to use the correct general inventory slot range (slotGeneral1–8, slots 22–29); previously used 23–30 causing items to be placed in wrong slots
+- **Pro Tools / Player Tools** — Fixed item and NPC search to handle backtick characters and match names whether the user types a space or underscore (e.g. "Flowing Black Silk" finds "Flowing_Black_Silk")
+- **Player Tools** — Move to Zone now shows a prominent warning when the target character is online, explicitly noting that this feature is designed for offline use and that proceeding may crash the server
+- **Network tab** — Removed Test Port 6000 button
+- **Advanced tab** — Open Docker Desktop now locates the executable via the Windows registry and all drive letters rather than assuming `C:\Program Files`; falls back to Start Menu launch if not found
