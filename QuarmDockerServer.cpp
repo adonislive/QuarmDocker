@@ -45,8 +45,6 @@
     "processorArchitecture='*' " \
     "publicKeyToken='6595b64144ccf1df' language='*'\"")
 
-// ── Constants previously in resource.h (now inlined — no external file needed) ──
-
 #define TIMER_POLL               1
 
 #define IDC_TAB                  1000
@@ -728,6 +726,12 @@ static std::string TrimRight(std::string s) {
     return s;
 }
 
+static std::wstring TrimRight(std::wstring s) {
+    while (!s.empty() && (s.back() == L'\r' || s.back() == L'\n' || s.back() == L' ' || s.back() == L'\t'))
+        s.pop_back();
+    return s;
+}
+
 // Normalize line endings for Win32 edit controls (\n -> \r\n)
 static std::wstring NormalizeNewlines(const std::wstring& s) {
     std::wstring out;
@@ -790,6 +794,423 @@ static std::wstring ComputeSHA1Hex(const std::wstring& input) {
     for (int i = 0; i < 20; i++)
         swprintf_s(hex + i*2, 3, L"%02x", hash[i]);
     return hex;
+}
+
+static std::wstring ReadTextFileWide(const wchar_t* path) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return L"";
+    std::string content((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+    return ToWide(content);
+}
+
+static bool WriteTextFileWide(const wchar_t* path, const std::wstring& text) {
+    std::ofstream f(path, std::ios::binary | std::ios::trunc);
+    if (!f) return false;
+    std::string bytes(text.begin(), text.end());
+    f.write(bytes.data(), (std::streamsize)bytes.size());
+    return true;
+}
+
+static std::wstring GetBuildSignaturePath() {
+    wchar_t path[MAX_PATH];
+    wcscpy_s(path, g_installDir);
+    PathAppendW(path, L".quarmdocker_build_signature");
+    return path;
+}
+
+static std::wstring GetRebuildInputSignature() {
+    const wchar_t* relPaths[] = {
+        L"Dockerfile",
+        L"docker-compose.yml",
+        L"init.sh",
+        L"entrypoint.sh",
+        nullptr
+    };
+
+    std::wstring manifest;
+    for (int i = 0; relPaths[i]; ++i) {
+        wchar_t fullPath[MAX_PATH];
+        wcscpy_s(fullPath, g_installDir);
+        PathAppendW(fullPath, relPaths[i]);
+        manifest += relPaths[i];
+        manifest += L":";
+        std::wstring content = ReadTextFileWide(fullPath);
+        manifest += content.empty() ? L"(missing)" : ComputeSHA1Hex(content);
+        manifest += L"\n";
+    }
+    return ComputeSHA1Hex(manifest);
+}
+
+static std::wstring LoadSavedBuildSignature() {
+    return TrimRight(ReadTextFileWide(GetBuildSignaturePath().c_str()));
+}
+
+static void SaveBuildSignature(const std::wstring& signature) {
+    if (!signature.empty())
+        WriteTextFileWide(GetBuildSignaturePath().c_str(), signature);
+}
+
+static bool HasComposeBuildImage() {
+    std::string imageId = TrimRight(RunCommand(L"docker compose images -q quarm", g_installDir));
+    return !imageId.empty() && imageId.find("Error") == std::string::npos;
+}
+
+static bool IsContainerRunning();
+
+static std::string BaseNameOfPath(std::string path) {
+    auto pos = path.find_last_of("/\\");
+    return (pos == std::string::npos) ? path : path.substr(pos + 1);
+}
+
+static std::vector<std::string> SplitProcessArgs(const std::string& line) {
+    std::vector<std::string> tokens;
+    std::istringstream ls(line);
+    std::string token;
+    while (ls >> token)
+        tokens.push_back(token);
+    return tokens;
+}
+
+static bool IsDynamicLauncherName(const std::string& token) {
+    return token.rfind("dynamic_", 0) == 0;
+}
+
+static std::vector<std::string> SplitTabLine(const std::string& line) {
+    std::vector<std::string> cols;
+    std::istringstream ls(line);
+    std::string col;
+    while (std::getline(ls, col, '\t'))
+        cols.push_back(col);
+    return cols;
+}
+
+static bool TableExists(const wchar_t* tableName) {
+    std::string out = TrimRight(RunCommand(
+        std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb -N -e \"SHOW TABLES LIKE '" + std::wstring(tableName) + L"'\" quarm"));
+    return out == std::string(tableName, tableName + wcslen(tableName));
+}
+
+static std::vector<std::string> GetTableColumns(const wchar_t* tableName) {
+    std::vector<std::string> cols;
+    std::string out = TrimRight(RunCommand(
+        std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb -N -e \"SHOW COLUMNS FROM " + std::wstring(tableName) + L"\" quarm"));
+    std::istringstream ss(out);
+    std::string line;
+    while (std::getline(ss, line)) {
+        line = TrimRight(line);
+        if (line.empty()) continue;
+        std::vector<std::string> row = SplitTabLine(line);
+        if (!row.empty() && !row[0].empty())
+            cols.push_back(row[0]);
+    }
+    return cols;
+}
+
+static bool HasColumn(const std::vector<std::string>& cols, const char* name) {
+    return std::find(cols.begin(), cols.end(), std::string(name)) != cols.end();
+}
+
+static std::string FindFirstColumn(const std::vector<std::string>& cols,
+                                   std::initializer_list<const char*> names) {
+    for (const char* name : names) {
+        if (HasColumn(cols, name))
+            return name;
+    }
+    return "";
+}
+
+static std::map<std::wstring, int> GetRunningZoneCountsFromWorldStateTable() {
+    std::map<std::wstring, int> zoneCounts;
+    if (TableExists(L"webdata_servers")) {
+        std::wstring staticSql =
+            L"SELECT name, COUNT(*) "
+            L"FROM webdata_servers "
+            L"WHERE connected = 1 "
+            L"AND name IS NOT NULL "
+            L"AND name <> '' "
+            L"AND name <> 'LoginServer' "
+            L"AND name NOT LIKE 'dynamic\\\\_%' "
+            L"AND name NOT LIKE 'dynzone%' "
+            L"GROUP BY name "
+            L"ORDER BY name";
+
+        std::string out = TrimRight(RunCommand(
+            std::wstring(L"docker exec ") + CONTAINER +
+            L" mariadb -N -e \"" + staticSql + L"\" quarm"));
+
+        std::istringstream ss(out);
+        std::string line;
+        while (std::getline(ss, line)) {
+            line = TrimRight(line);
+            if (line.empty()) continue;
+            std::vector<std::string> row = SplitTabLine(line);
+            if (row.size() < 2) continue;
+            if (row[0].empty()) continue;
+            zoneCounts[ToWide(row[0])] += atoi(row[1].c_str());
+        }
+    }
+
+    if (TableExists(L"webdata_character")) {
+        std::wstring playerSql =
+            L"SELECT z.short_name, COUNT(*) "
+            L"FROM webdata_character wc "
+            L"JOIN character_data cd ON cd.id = wc.id "
+            L"JOIN zone z ON z.zoneidnumber = cd.zone_id "
+            L"WHERE wc.last_seen = 0 "
+            L"GROUP BY z.short_name "
+            L"ORDER BY z.short_name";
+
+        std::string playerOut = TrimRight(RunCommand(
+            std::wstring(L"docker exec ") + CONTAINER +
+            L" mariadb -N -e \"" + playerSql + L"\" quarm"));
+
+        std::istringstream pss(playerOut);
+        std::string line;
+        while (std::getline(pss, line)) {
+            line = TrimRight(line);
+            if (line.empty()) continue;
+            std::vector<std::string> row = SplitTabLine(line);
+            if (row.size() < 2) continue;
+            if (row[0].empty()) continue;
+            int players = atoi(row[1].c_str());
+            if (players > 0) {
+                int& count = zoneCounts[ToWide(row[0])];
+                if (players > count)
+                    count = players;
+            }
+        }
+    }
+
+    return zoneCounts;
+}
+
+struct LiveZoneProcessInfo {
+    std::wstring zoneName;
+    int port = 0;
+    int pid = 0;
+};
+
+static bool ParseZoneLogFileName(const std::string& path, LiveZoneProcessInfo& info) {
+    std::string base = path;
+    size_t slash = base.find_last_of("/\\");
+    if (slash != std::string::npos)
+        base = base.substr(slash + 1);
+    if (base.size() <= 4 || base.substr(base.size() - 4) != ".log")
+        return false;
+    base.resize(base.size() - 4);
+
+    size_t pidSep = base.rfind('_');
+    if (pidSep == std::string::npos || pidSep == 0 || pidSep + 1 >= base.size())
+        return false;
+
+    size_t portSep = base.rfind("_port_");
+    if (portSep == std::string::npos || portSep == 0 || portSep + 6 >= pidSep)
+        return false;
+
+    std::string zoneName = base.substr(0, portSep);
+    std::string portStr = base.substr(portSep + 6, pidSep - (portSep + 6));
+    std::string pidStr = base.substr(pidSep + 1);
+    if (zoneName.empty() || portStr.empty() || pidStr.empty())
+        return false;
+
+    for (char c : portStr) if (!isdigit(static_cast<unsigned char>(c))) return false;
+    for (char c : pidStr) if (!isdigit(static_cast<unsigned char>(c))) return false;
+
+    info.zoneName = ToWide(zoneName);
+    info.port = atoi(portStr.c_str());
+    info.pid = atoi(pidStr.c_str());
+    return info.port > 0 && info.pid > 0;
+}
+
+static std::vector<LiveZoneProcessInfo> GetLiveZoneProcessesFromLogs() {
+    std::vector<LiveZoneProcessInfo> processes;
+    if (!IsContainerRunning())
+        return processes;
+
+    std::string psOut = TrimRight(RunCommand(
+        std::wstring(L"docker exec ") + CONTAINER +
+        L" sh -c \"ps -eo pid=,args=\""));
+
+    std::set<int> liveZonePids;
+    std::istringstream pss(psOut);
+    std::string line;
+    while (std::getline(pss, line)) {
+        line = TrimRight(line);
+        auto first = line.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos)
+            continue;
+        line.erase(0, first);
+
+        size_t split = line.find_first_of(" \t");
+        if (split == std::string::npos)
+            continue;
+
+        std::string pidStr = line.substr(0, split);
+        std::string args = line.substr(split + 1);
+        if (pidStr.empty() || args.empty())
+            continue;
+
+        bool digitsOnly = true;
+        for (char c : pidStr) {
+            if (!isdigit(static_cast<unsigned char>(c))) {
+                digitsOnly = false;
+                break;
+            }
+        }
+        if (!digitsOnly)
+            continue;
+
+        std::vector<std::string> tokens = SplitProcessArgs(args);
+        if (tokens.empty())
+            continue;
+        if (BaseNameOfPath(tokens[0]) != "zone")
+            continue;
+
+        liveZonePids.insert(atoi(pidStr.c_str()));
+    }
+
+    if (liveZonePids.empty())
+        return processes;
+
+    std::string filesOut = TrimRight(RunCommand(
+        std::wstring(L"docker exec ") + CONTAINER +
+        L" sh -c \"find /src/build/bin/logs/zone /quarm/logs/zone /logs/zone "
+        L"-maxdepth 1 -type f -name '*_port_*_*.log' 2>/dev/null\""));
+
+    std::set<std::pair<std::wstring, int>> seen;
+    std::istringstream fss(filesOut);
+    while (std::getline(fss, line)) {
+        line = TrimRight(line);
+        if (line.empty())
+            continue;
+
+        LiveZoneProcessInfo info;
+        if (!ParseZoneLogFileName(line, info))
+            continue;
+        if (liveZonePids.find(info.pid) == liveZonePids.end())
+            continue;
+        if (!seen.insert(std::make_pair(info.zoneName, info.pid)).second)
+            continue;
+
+        processes.push_back(info);
+    }
+
+    return processes;
+}
+
+static std::map<std::wstring, std::vector<int>> GetLiveZonePidsByName() {
+    std::map<std::wstring, std::vector<int>> zonePids;
+    for (const auto& info : GetLiveZoneProcessesFromLogs())
+        zonePids[info.zoneName].push_back(info.pid);
+    return zonePids;
+}
+
+static std::string ExtractZoneShortNameFromArgs(const std::string& line) {
+    std::vector<std::string> tokens = SplitProcessArgs(line);
+    if (tokens.size() < 2) return "";
+
+    size_t exeIndex = std::string::npos;
+    for (size_t i = 0; i < tokens.size(); ++i) {
+        if (BaseNameOfPath(tokens[i]) == "zone") {
+            exeIndex = i;
+            break;
+        }
+    }
+    if (exeIndex == std::string::npos || exeIndex + 1 >= tokens.size())
+        return "";
+
+    for (size_t i = tokens.size(); i > exeIndex + 1; --i) {
+        const std::string& candidate = tokens[i - 1];
+        if (candidate.empty()) continue;
+        if (candidate[0] == '-') continue;
+        if (IsDynamicLauncherName(candidate)) continue;
+        return candidate;
+    }
+
+    return "";
+}
+
+static std::map<std::wstring, int> GetRunningZoneProcessCounts() {
+    std::map<std::wstring, int> zoneCounts;
+    for (const auto& info : GetLiveZoneProcessesFromLogs())
+        zoneCounts[info.zoneName]++;
+    if (!zoneCounts.empty())
+        return zoneCounts;
+
+    zoneCounts = GetRunningZoneCountsFromWorldStateTable();
+    if (!zoneCounts.empty())
+        return zoneCounts;
+
+    zoneCounts.clear();
+    std::string psOut = RunCommand(std::wstring(L"docker exec ") + CONTAINER + L" ps -eo args");
+    std::istringstream ss(psOut);
+    std::string line;
+
+    while (std::getline(ss, line)) {
+        line = TrimRight(line);
+        auto first = line.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos) continue;
+        line.erase(0, first);
+
+        std::string zone = ExtractZoneShortNameFromArgs(line);
+        if (zone.empty()) continue;
+        zoneCounts[ToWide(zone)]++;
+    }
+
+    return zoneCounts;
+}
+
+static std::map<std::wstring, std::pair<std::wstring, std::wstring>>
+GetZoneMetadata(const std::map<std::wstring, int>& zoneCounts) {
+    std::map<std::wstring, std::pair<std::wstring, std::wstring>> meta;
+    if (zoneCounts.empty() || !IsContainerRunning())
+        return meta;
+
+    std::wstring sql =
+        L"SELECT short_name, long_name, zone_exp_multiplier "
+        L"FROM zone WHERE short_name IN (";
+    bool first = true;
+    for (const auto& entry : zoneCounts) {
+        if (!first) sql += L",";
+        sql += L"'";
+        for (wchar_t c : entry.first) {
+            if (c == L'\'') sql += L"''";
+            else sql += c;
+        }
+        sql += L"'";
+        first = false;
+    }
+    sql += L") ORDER BY long_name";
+
+    std::string out = TrimRight(RunCommand(
+        std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb -N -e \"" + sql + L"\" quarm"));
+
+    std::istringstream ss(out);
+    std::string line;
+    while (std::getline(ss, line)) {
+        line = TrimRight(line);
+        if (line.empty()) continue;
+
+        std::vector<std::string> cols;
+        std::istringstream ls(line);
+        std::string col;
+        while (std::getline(ls, col, '\t'))
+            cols.push_back(col);
+        if (cols.size() < 3) continue;
+
+        meta[ToWide(cols[0])] = { ToWide(cols[1]), ToWide(cols[2]) };
+    }
+
+    return meta;
+}
+
+static void SetServerPanelResult(const std::wstring& text) {
+    if (g_hwndServerResult)
+        SetWindowTextW(g_hwndServerResult, text.c_str());
 }
 
 static std::wstring GetServerAddress() {
@@ -1044,38 +1465,6 @@ static void CreateStatusPanel(HWND parent) {
     MakeButton(parent, L"Stop Server",    IDC_BTN_STOP,           134, y, 106, 28);
     MakeButton(parent, L"Restart Server", IDC_BTN_RESTART_SERVER, 248, y, 120, 28);
     y += 34;
-    // Era
-    MakeLabel(parent, L"Era:", 20, y+4, 26, 20);
-    g_hwndGameEraCur = MakeLabel(parent, L"(?)", 50, y+4, 60, 20);
-    g_hwndGameEraCbo = MakeCombo(parent, IDC_GAME_ERA_COMBO, 114, y, 150, 200);
-    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Classic");
-    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Kunark");
-    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Velious");
-    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Luclin");
-    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Planes of Power");
-    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"All Expansions");
-    MakeButton(parent, L"Set Era", IDC_BTN_SET_ERA, 272, y, 72, 26);
-    MakeLabel(parent, L"(restart required)", 352, y+4, 130, 20);
-    y += 30;
-    // Server Name
-    MakeLabel(parent, L"Server Name:", 20, y+4, 88, 20);
-    g_hwndServerNameEdit = MakeEdit(parent, IDC_STATUS_SERVERNAME_EDIT, 114, y, 694, 24);
-    MakeButton(parent, L"Set Name", IDC_BTN_SET_SERVERNAME, 816, y, 76, 26);
-    y += 28;
-    // Login Marquee
-    MakeLabel(parent, L"Login Marquee:", 20, y+4, 100, 20);
-    g_hwndMarqueeEdit = MakeEdit(parent, IDC_STATUS_MARQUEE_EDIT, 124, y, 684, 24);
-    MakeButton(parent, L"Set Marquee", IDC_BTN_SET_MARQUEE, 816, y, 76, 26);
-    y += 28;    // MOTD
-    MakeLabel(parent, L"MOTD:", 20, y+4, 42, 20);
-    g_hwndMotdEdit = MakeEdit(parent, IDC_STATUS_MOTD_EDIT, 68, y, 740, 24);
-    MakeButton(parent, L"Set MOTD", IDC_BTN_SET_MOTD, 816, y, 76, 26);
-    y += 28;
-    // Announce
-    MakeLabel(parent, L"Announce:", 20, y+4, 68, 20);
-    g_hwndAnnounceEdit = MakeEdit(parent, IDC_ANNOUNCE_EDIT, 94, y, 714, 24);
-    MakeButton(parent, L"Send", IDC_BTN_SEND_ANNOUNCE, 816, y, 76, 26);
-    y += 30;
     // Services
     MakeLabel(parent, L"Services:", 20, y, 60, 18);
     y += 18;
@@ -1276,6 +1665,27 @@ static void CreateAdminPanel(HWND parent) {
     MakeLabel(parent, L"(character must be offline)", 540, y+4, 200, 20);
     y += 34;
 
+    MakeLabel(parent, L"Character Attributes:", 20, y, 130, 20);
+    y += 22;
+    MakeLabel(parent, L"Race:", 20, y+4, 36, 20);
+    g_hwndProRaceCbo = MakeCombo(parent, IDC_PRO_RACE_COMBO, 60, y, 120, 400);
+    for (int i = 0; i < RACE_TABLE_COUNT; ++i)
+        SendMessageW(g_hwndProRaceCbo, CB_ADDSTRING, 0, (LPARAM)RACE_TABLE[i].name);
+    MakeButton(parent, L"Set", IDC_BTN_PRO_SET_RACE, 186, y, 40, 26);
+    MakeLabel(parent, L"Class:", 236, y+4, 40, 20);
+    g_hwndProClassCbo = MakeCombo(parent, IDC_PRO_CLASS_COMBO, 280, y, 120, 400);
+    for (int i = 0; i < 15; ++i)
+        SendMessageW(g_hwndProClassCbo, CB_ADDSTRING, 0, (LPARAM)CLASS_NAMES[i]);
+    MakeButton(parent, L"Set", IDC_BTN_PRO_SET_CLASS, 406, y, 40, 26);
+    MakeLabel(parent, L"Gender:", 456, y+4, 48, 20);
+    g_hwndProGenderCbo = MakeCombo(parent, IDC_PRO_GENDER_COMBO, 508, y, 80, 100);
+    SendMessageW(g_hwndProGenderCbo, CB_ADDSTRING, 0, (LPARAM)L"Male");
+    SendMessageW(g_hwndProGenderCbo, CB_ADDSTRING, 0, (LPARAM)L"Female");
+    SendMessage(g_hwndProGenderCbo, CB_SETCURSEL, 0, 0);
+    MakeButton(parent, L"Set", IDC_BTN_PRO_SET_GENDER, 594, y, 40, 26);
+    MakeLabel(parent, L"(restart req'd)", 644, y+4, 100, 16);
+    y += 34;
+
     g_hwndAdmResult = MakeResultBox(parent, IDC_ADM_RESULT, 20, y, 880, 200);
 }
 
@@ -1417,7 +1827,12 @@ static void DoResetPassword() {
 static void DoWhoIsOnline() {
     if (!CheckServerRunning(L"Who Is Online")) return;
     std::wstring sql =
-        L"SELECT cd.name, cd.level, "
+        L"SELECT cd.name, "
+        L"CASE "
+        L"WHEN wc.id IS NOT NULL AND wc.last_seen = 0 THEN 'Online' "
+        L"ELSE 'Offline' "
+        L"END AS status, "
+        L"cd.level, "
         L"CASE cd.class WHEN 1 THEN 'WAR' WHEN 2 THEN 'CLR' WHEN 3 THEN 'PAL' "
         L"WHEN 4 THEN 'RNG' WHEN 5 THEN 'SHD' WHEN 6 THEN 'DRU' "
         L"WHEN 7 THEN 'MNK' WHEN 8 THEN 'BRD' WHEN 9 THEN 'ROG' "
@@ -1426,9 +1841,12 @@ static void DoWhoIsOnline() {
         L"ELSE CAST(cd.class AS CHAR) END as class, "
         L"z.short_name AS zone "
         L"FROM character_data cd "
+        L"LEFT JOIN webdata_character wc ON wc.id = cd.id "
         L"LEFT JOIN zone z ON z.zoneidnumber=cd.zone_id "
         L"WHERE cd.last_login > UNIX_TIMESTAMP(NOW() - INTERVAL 1 DAY) "
-        L"ORDER BY cd.last_login DESC";
+        L"ORDER BY "
+        L"CASE WHEN wc.id IS NOT NULL AND wc.last_seen = 0 THEN 0 ELSE 1 END, "
+        L"cd.last_login DESC";
     std::wstring result = RunQueryTable(sql);
     SetPlrResult(L"Characters active in last 24 hours:\r\n\r\n" + result);
 }
@@ -2958,6 +3376,37 @@ static void CreateZonePanel(HWND parent) {
 static void CreateServerPanel(HWND parent) {
     int y = 10;
 
+    MakeLabel(parent, L"Server Settings:", 20, y, 110, 20);
+    y += 22;
+    MakeLabel(parent, L"Era:", 20, y+4, 26, 20);
+    g_hwndGameEraCur = MakeLabel(parent, L"(?)", 50, y+4, 60, 20);
+    g_hwndGameEraCbo = MakeCombo(parent, IDC_GAME_ERA_COMBO, 114, y, 150, 200);
+    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Classic");
+    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Kunark");
+    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Velious");
+    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Luclin");
+    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"Planes of Power");
+    SendMessageW(g_hwndGameEraCbo, CB_ADDSTRING, 0, (LPARAM)L"All Expansions");
+    MakeButton(parent, L"Set Era", IDC_BTN_SET_ERA, 272, y, 72, 26);
+    MakeLabel(parent, L"(restart required)", 352, y+4, 130, 20);
+    y += 30;
+    MakeLabel(parent, L"Server Name:", 20, y+4, 88, 20);
+    g_hwndServerNameEdit = MakeEdit(parent, IDC_STATUS_SERVERNAME_EDIT, 114, y, 694, 24);
+    MakeButton(parent, L"Set Name", IDC_BTN_SET_SERVERNAME, 816, y, 76, 26);
+    y += 28;
+    MakeLabel(parent, L"Login Marquee:", 20, y+4, 100, 20);
+    g_hwndMarqueeEdit = MakeEdit(parent, IDC_STATUS_MARQUEE_EDIT, 124, y, 684, 24);
+    MakeButton(parent, L"Set Marquee", IDC_BTN_SET_MARQUEE, 816, y, 76, 26);
+    y += 28;
+    MakeLabel(parent, L"MOTD:", 20, y+4, 42, 20);
+    g_hwndMotdEdit = MakeEdit(parent, IDC_STATUS_MOTD_EDIT, 68, y, 740, 24);
+    MakeButton(parent, L"Set MOTD", IDC_BTN_SET_MOTD, 816, y, 76, 26);
+    y += 28;
+    MakeLabel(parent, L"Announce:", 20, y+4, 68, 20);
+    g_hwndAnnounceEdit = MakeEdit(parent, IDC_ANNOUNCE_EDIT, 94, y, 714, 24);
+    MakeButton(parent, L"Send", IDC_BTN_SEND_ANNOUNCE, 816, y, 76, 26);
+    y += 38;
+
     // --- XP Multiplier Slider (1.00x - 10.00x in 0.25 steps) ---
     MakeLabel(parent, L"XP Rate:", 20, y+4, 56, 20);
     g_hwndXpSlider = CreateWindowExW(0, TRACKBAR_CLASSW, L"",
@@ -3075,12 +3524,10 @@ static void DoRefreshZones() {
         return;
     }
 
-    // Count total zone processes
-    std::string procCountOut = TrimRight(RunCommand(
-        std::wstring(L"docker exec ") + CONTAINER +
-        L" sh -c \"ps -eo args 2>/dev/null | grep -c '[z]one '\""));
+    std::map<std::wstring, int> zoneCounts = GetRunningZoneProcessCounts();
     int totalProcs = 0;
-    for (char c : procCountOut) { if (isdigit(c)) totalProcs = totalProcs * 10 + (c - '0'); }
+    for (const auto& entry : zoneCounts)
+        totalProcs += entry.second;
 
     // Get configured dynamic count
     std::string dynCountOut = TrimRight(RunCommand(std::wstring(L"docker exec ") + CONTAINER +
@@ -3088,48 +3535,29 @@ static void DoRefreshZones() {
     int dynCount = 0;
     for (char c : dynCountOut) { if (isdigit(c)) dynCount = dynCount * 10 + (c - '0'); }
 
-    // Query active zones from spawn2 table (zones the server has content for)
-    std::string activeOut = RunCommand(std::wstring(L"docker exec ") + CONTAINER +
-        L" mariadb -N -e \""
-        L"SELECT s2.zone, z.long_name, z.zone_exp_multiplier, COUNT(DISTINCT s2.id) AS spawns "
-        L"FROM spawn2 s2 "
-        L"JOIN zone z ON z.short_name=s2.zone "
-        L"WHERE s2.enabled=1 "
-        L"GROUP BY s2.zone, z.long_name, z.zone_exp_multiplier "
-        L"ORDER BY z.long_name"
-        L"\" quarm");
-
+    std::map<std::wstring, std::pair<std::wstring, std::wstring>> zoneMeta =
+        GetZoneMetadata(zoneCounts);
     std::vector<std::wstring> items;
-    int activeZones = 0;
-    std::istringstream ss(activeOut);
-    std::string line;
-    while (std::getline(ss, line)) {
-        line.erase(line.find_last_not_of(" \t\r\n") + 1);
-        if (line.empty()) continue;
-        // Parse tab-separated: short_name, long_name, zem, spawn_count
-        std::vector<std::string> cols;
-        std::istringstream ls(line);
-        std::string col;
-        while (std::getline(ls, col, '\t')) {
-            while (!col.empty() && (col.back() == ' ' || col.back() == '\r')) col.pop_back();
-            cols.push_back(col);
+    int runningZones = 0;
+    for (const auto& entry : zoneCounts) {
+        const std::wstring& shortName = entry.first;
+        std::wstring longName = shortName;
+        std::wstring zem = L"0";
+        auto metaIt = zoneMeta.find(shortName);
+        if (metaIt != zoneMeta.end()) {
+            if (!metaIt->second.first.empty()) longName = metaIt->second.first;
+            if (!metaIt->second.second.empty()) zem = metaIt->second.second;
         }
-        if (cols.size() < 2) continue;
 
-        std::wstring shortName = ToWide(cols[0]);
-        std::wstring longName  = cols.size() > 1 ? ToWide(cols[1]) : L"";
-        std::wstring zem       = cols.size() > 2 ? ToWide(cols[2]) : L"0";
-        std::wstring spawns    = cols.size() > 3 ? ToWide(cols[3]) : L"0";
-
-        // Tab-separated columns: Long Name | Short Name | Spawns | ZEM
-        std::wstring display = longName + L"\t" + shortName + L"\t" + spawns;
+        std::wstring display = longName + L"\t" + shortName + L"\t" +
+                               std::to_wstring(entry.second);
         if (zem != L"0" && zem != L"0.00")
             display += L"\t" + zem;
         else
             display += L"\t";
 
         items.push_back(display);
-        activeZones++;
+        runningZones++;
     }
 
     // Only redraw if content changed
@@ -3149,12 +3577,12 @@ static void DoRefreshZones() {
         for (auto& item : items)
             SendMessageW(g_hwndZoneList, LB_ADDSTRING, 0, (LPARAM)item.c_str());
         if (items.empty())
-            SendMessageW(g_hwndZoneList, LB_ADDSTRING, 0, (LPARAM)L"(no active zones found)");
+            SendMessageW(g_hwndZoneList, LB_ADDSTRING, 0, (LPARAM)L"(no running zone processes found)");
     }
 
     wchar_t buf[256];
-    swprintf_s(buf, L"%d zone processes, %d active zones with content, %d dynamic pool configured",
-        totalProcs, activeZones, dynCount);
+    swprintf_s(buf, L"%d zone processes across %d running zones, %d dynamic pool configured",
+        totalProcs, runningZones, dynCount);
     if (g_hwndZoneResult) SetWindowTextW(g_hwndZoneResult, buf);
     if (g_hwndStatusResult) SetWindowTextW(g_hwndStatusResult, buf);
 }
@@ -3171,12 +3599,41 @@ static void DoStopZone() {
         (L"Stop all processes for zone '" + zoneName + L"'?").c_str(),
         L"Confirm Stop Zone", MB_YESNO | MB_ICONQUESTION);
     if (r != IDYES) return;
+
+    auto zonePids = GetLiveZonePidsByName();
+    auto it = zonePids.find(zoneName);
+    if (it == zonePids.end() || it->second.empty()) {
+        if (g_hwndZoneResult)
+            SetWindowTextW(g_hwndZoneResult,
+                (L"Could not find a live PID for zone '" + zoneName + L"'.").c_str());
+        DoRefreshZones();
+        return;
+    }
+
+    std::wstring pidList;
+    for (int pid : it->second) {
+        if (!pidList.empty())
+            pidList += L" ";
+        pidList += std::to_wstring(pid);
+    }
+
     RunCommand(std::wstring(L"docker exec ") + CONTAINER +
-        L" sh -c \"ps -eo pid,args | grep '[z]one " + zoneName +
-        L"' | awk '{print $1}' | xargs -r kill\"");
-    if (g_hwndZoneResult) SetWindowTextW(g_hwndZoneResult,
-        (L"Killed zone process for '" + zoneName + L"'.").c_str());
-    Sleep(500);
+        L" sh -c \"kill " + pidList + L"\"");
+    bool stopped = false;
+    for (int i = 0; i < 8; ++i) {
+        auto zoneCounts = GetRunningZoneProcessCounts();
+        if (zoneCounts.find(zoneName) == zoneCounts.end()) {
+            stopped = true;
+            break;
+        }
+        Sleep(250);
+    }
+    if (g_hwndZoneResult) {
+        if (stopped)
+            SetWindowTextW(g_hwndZoneResult, (L"Stopped zone '" + zoneName + L"' and refreshed live state.").c_str());
+        else
+            SetWindowTextW(g_hwndZoneResult, (L"Stop requested for '" + zoneName + L"', but a zone process is still present.").c_str());
+    }
     DoRefreshZones();
 }
 
@@ -3188,12 +3645,38 @@ static void DoRestartZone() {
             L"Restart Zone", MB_OK | MB_ICONINFORMATION);
         return;
     }
+    auto zonePids = GetLiveZonePidsByName();
+    auto it = zonePids.find(zoneName);
+    if (it == zonePids.end() || it->second.empty()) {
+        if (g_hwndZoneResult)
+            SetWindowTextW(g_hwndZoneResult,
+                (L"Could not find a live PID for zone '" + zoneName + L"'.").c_str());
+        DoRefreshZones();
+        return;
+    }
+
+    std::wstring pidList;
+    for (int pid : it->second) {
+        if (!pidList.empty())
+            pidList += L" ";
+        pidList += std::to_wstring(pid);
+    }
+
     RunCommand(std::wstring(L"docker exec ") + CONTAINER +
-        L" sh -c \"ps -eo pid,args | grep '[z]one " + zoneName +
-        L"' | awk '{print $1}' | xargs -r kill\"");
+        L" sh -c \"kill " + pidList + L"\"");
+
+    for (int i = 0; i < 12; ++i) {
+        auto zoneCounts = GetRunningZoneProcessCounts();
+        if (zoneCounts.find(zoneName) == zoneCounts.end())
+            break;
+        Sleep(250);
+    }
+
+    RunCommand(std::wstring(L"docker exec -d ") + CONTAINER +
+        L" /quarm/bin/zone " + zoneName);
     if (g_hwndZoneResult) SetWindowTextW(g_hwndZoneResult,
-        (L"Restarting zone '" + zoneName + L"'. Will be re-served by dynamic pool.").c_str());
-    Sleep(2000);
+        (L"Restart requested for zone '" + zoneName + L"' using its live PID.").c_str());
+    Sleep(2500);
     DoRefreshZones();
 }
 
@@ -3229,14 +3712,17 @@ static void DoFindZoneStatus() {
         if (c == L'\'') safe += L"''";
         else safe += c;
     }
-    // Query zone info with an active/running indicator based on spawn2 content
+    std::wstring statusCase = L"CASE";
+    for (const auto& entry : GetRunningZoneProcessCounts())
+        statusCase += L" WHEN z.short_name='" + entry.first + L"' THEN 'RUNNING'";
+    statusCase += L" ELSE 'stopped' END";
+
     std::wstring sql =
-        L"SELECT z.short_name, z.long_name, z.zoneidnumber, "
-        L"z.zone_exp_multiplier AS zem, "
-        L"CASE WHEN EXISTS(SELECT 1 FROM spawn2 s2 WHERE s2.zone=z.short_name AND s2.enabled=1) "
-        L"THEN 'ACTIVE' ELSE 'empty' END AS status "
-        L"FROM zone z "
-        L"WHERE z.short_name LIKE '%" + safe + L"%' OR z.long_name LIKE '%" + safe +
+        std::wstring(L"SELECT z.short_name, z.long_name, z.zoneidnumber, ")
+        + L"z.zone_exp_multiplier AS zem, "
+        + statusCase + L" AS status "
+        + L"FROM zone z "
+        + L"WHERE z.short_name LIKE '%" + safe + L"%' OR z.long_name LIKE '%" + safe +
         L"%' ORDER BY z.short_name LIMIT 30";
     std::wstring result = RunQueryTable(sql);
     if (g_hwndZoneResult)
@@ -3297,8 +3783,8 @@ static void DoDespawnBoss() {
              L"WHERE se.npcID=" + std::to_wstring(npcId));
     // Kill zones for that zone to force reload
     RunCommand(std::wstring(L"docker exec ") + CONTAINER +
-        L" sh -c \"ps -eo pid,args | grep 'zone " + std::wstring(zone) +
-        L"' | grep -v grep | awk '{print $1}' | xargs -r kill\"");
+        L" sh -c \"ps -eo pid,args | awk '$2 ~ /(^|\\\\/)zone$/ && $NF==\\\"" + std::wstring(zone) +
+        L"\\\" {print $1}' | xargs -r kill\"");
     if (g_hwndStatusResult)
         SetWindowTextW(g_hwndStatusResult,
             (std::wstring(bossName) + L" despawned. Zone '" + std::wstring(zone) + L"' reloading.").c_str());
@@ -4623,6 +5109,26 @@ static void DoRebuild() {
         L"Do not close this window.");
 
     std::thread([]{
+        std::wstring currentSignature = GetRebuildInputSignature();
+        std::wstring savedSignature = LoadSavedBuildSignature();
+        bool hasImage = HasComposeBuildImage();
+        bool needsBuild = currentSignature.empty() || !hasImage || savedSignature.empty() ||
+                          currentSignature != savedSignature;
+
+        if (!needsBuild) {
+            bool wasRunning = IsContainerRunning();
+            if (!wasRunning)
+                RunCommand(L"docker compose up -d", g_installDir);
+            auto* res = new AsyncResult{
+                true,
+                wasRunning
+                    ? L"Build inputs are unchanged. Skipped docker compose build."
+                    : L"Build inputs are unchanged. Skipped docker compose build and started the existing image."
+            };
+            PostMessageW(g_hwndMain, WM_ASYNC_DONE, TAB_ADVANCED, (LPARAM)res);
+            return;
+        }
+
         if (IsContainerRunning()) {
             wchar_t backupDir[MAX_PATH];
             wcscpy_s(backupDir, g_installDir);
@@ -4647,6 +5153,7 @@ static void DoRebuild() {
             return;
         }
         RunCommand(L"docker compose up -d", g_installDir);
+        SaveBuildSignature(currentSignature);
         auto* res = new AsyncResult{ true, L"Rebuild complete. Server is running." };
         PostMessageW(g_hwndMain, WM_ASYNC_DONE, TAB_ADVANCED, (LPARAM)res);
     }).detach();
@@ -4685,6 +5192,7 @@ static void DoStartFresh() {
             return;
         }
         RunCommand(L"docker compose up -d", g_installDir);
+        SaveBuildSignature(GetRebuildInputSignature());
         auto* res = new AsyncResult{ true, L"Fresh start complete. Server is running with a clean database." };
         PostMessageW(g_hwndMain, WM_ASYNC_DONE, TAB_ADVANCED, (LPARAM)res);
     }).detach();
@@ -4725,26 +5233,6 @@ static void CreateGameToolsPanel(HWND parent) {
     MakeButton(parent, L"Set AA", IDC_BTN_PRO_SET_AA, 612, y, 70, 26);
     y += 28;
 
-    // Race, Class, Gender
-    MakeLabel(parent, L"Race:", 20, y+4, 36, 20);
-    g_hwndProRaceCbo = MakeCombo(parent, IDC_PRO_RACE_COMBO, 60, y, 120, 400);
-    for (int i = 0; i < RACE_TABLE_COUNT; ++i)
-        SendMessageW(g_hwndProRaceCbo, CB_ADDSTRING, 0, (LPARAM)RACE_TABLE[i].name);
-    MakeButton(parent, L"Set", IDC_BTN_PRO_SET_RACE, 186, y, 40, 26);
-    MakeLabel(parent, L"Class:", 236, y+4, 40, 20);
-    g_hwndProClassCbo = MakeCombo(parent, IDC_PRO_CLASS_COMBO, 280, y, 120, 400);
-    for (int i = 0; i < 15; ++i)
-        SendMessageW(g_hwndProClassCbo, CB_ADDSTRING, 0, (LPARAM)CLASS_NAMES[i]);
-    MakeButton(parent, L"Set", IDC_BTN_PRO_SET_CLASS, 406, y, 40, 26);
-    MakeLabel(parent, L"Gender:", 456, y+4, 48, 20);
-    g_hwndProGenderCbo = MakeCombo(parent, IDC_PRO_GENDER_COMBO, 508, y, 80, 100);
-    SendMessageW(g_hwndProGenderCbo, CB_ADDSTRING, 0, (LPARAM)L"Male");
-    SendMessageW(g_hwndProGenderCbo, CB_ADDSTRING, 0, (LPARAM)L"Female");
-    SendMessage(g_hwndProGenderCbo, CB_SETCURSEL, 0, 0);
-    MakeButton(parent, L"Set", IDC_BTN_PRO_SET_GENDER, 594, y, 40, 26);
-    MakeLabel(parent, L"(restart req'd)", 644, y+4, 100, 16);
-    y += 28;
-
     // Rename (own row)
     MakeLabel(parent, L"Rename:", 20, y+4, 52, 20);
     g_hwndProNewName = MakeEdit(parent, IDC_PRO_NEWNAME, 78, y, 180, 24);
@@ -4769,12 +5257,10 @@ static void CreateGameToolsPanel(HWND parent) {
     MakeButton(parent, L"Set Title", IDC_BTN_PRO_SET_TITLE, 370, y, 86, 26);
     y += 30;
 
-    // Platinum + Currency + Inventory
+    // Platinum
     MakeLabel(parent, L"Platinum:", 20, y+4, 58, 20);
     g_hwndProPlatAmount = MakeEdit(parent, IDC_PRO_PLAT_AMOUNT, 82, y, 80, 24);
     MakeButton(parent, L"Give Platinum", IDC_BTN_PRO_GIVE_PLAT, 170, y, 110, 26);
-    MakeButton(parent, L"Currency",      IDC_BTN_PRO_CURRENCY,   290, y, 80,  26);
-    MakeButton(parent, L"Inventory",     IDC_BTN_PRO_INVENTORY,  378, y, 80,  26);
     y += 30;
 
     // --- Loot Table Viewer ---
@@ -5744,34 +6230,21 @@ static LRESULT CALLBACK PanelProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 // ============================================================
 
 static void DoLoadServerName() {
-    // longname lives in eqemu_config.json under server.world.longname
-    const wchar_t* relPaths[] = {
-        L"config\\eqemu_config.json",
-        L"eqemu_config.json",
-        nullptr
-    };
-    for (int i = 0; relPaths[i]; ++i) {
-        wchar_t cfgPath[MAX_PATH];
-        wcscpy_s(cfgPath, g_installDir);
-        PathAppendW(cfgPath, relPaths[i]);
-        std::ifstream f(cfgPath);
-        if (!f) continue;
-        std::string content((std::istreambuf_iterator<char>(f)),
-                             std::istreambuf_iterator<char>());
-        auto pos = content.find("\"longname\"");
-        if (pos == std::string::npos) continue;
-        pos = content.find(':', pos);
-        if (pos == std::string::npos) continue;
-        pos = content.find('"', pos);
-        if (pos == std::string::npos) continue;
-        ++pos;
-        auto end = content.find('"', pos);
-        if (end == std::string::npos) continue;
-        std::wstring val = ToWide(content.substr(pos, end - pos));
-        if (!val.empty() && g_hwndServerNameEdit)
-            SetWindowTextW(g_hwndServerNameEdit, val.c_str());
-        return;
-    }
+    if (!IsContainerRunning()) return;
+    std::string content = RunCommand(
+        std::wstring(L"docker exec ") + CONTAINER + L" cat /src/build/bin/eqemu_config.json");
+    auto pos = content.find("\"longname\"");
+    if (pos == std::string::npos) return;
+    pos = content.find(':', pos);
+    if (pos == std::string::npos) return;
+    pos = content.find('"', pos);
+    if (pos == std::string::npos) return;
+    ++pos;
+    auto end = content.find('"', pos);
+    if (end == std::string::npos) return;
+    std::wstring val = ToWide(content.substr(pos, end - pos));
+    if (!val.empty() && g_hwndServerNameEdit)
+        SetWindowTextW(g_hwndServerNameEdit, val.c_str());
 }
 
 static void DoLoadMarquee() {
@@ -5809,38 +6282,21 @@ static void DoSetServerName() {
          L"Continue and restart now?").c_str(),
         L"Confirm Server Name Change", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
     if (r != IDYES) return;
-    // Try both possible locations
-    const wchar_t* relPaths[] = {
-        L"config\\eqemu_config.json",
-        L"eqemu_config.json",
-        nullptr
-    };
-    std::string content;
-    wchar_t foundPath[MAX_PATH] = {};
-    for (int i = 0; relPaths[i]; ++i) {
-        wchar_t cfgPath[MAX_PATH];
-        wcscpy_s(cfgPath, g_installDir);
-        PathAppendW(cfgPath, relPaths[i]);
-        std::ifstream fin(cfgPath);
-        if (fin) {
-            content = std::string((std::istreambuf_iterator<char>(fin)),
-                                   std::istreambuf_iterator<char>());
-            fin.close();
-            wcscpy_s(foundPath, cfgPath);
-            break;
-        }
+    if (!IsContainerRunning()) {
+        SetServerPanelResult(L"Failed: server must be running to update /src/build/bin/eqemu_config.json inside the container.");
+        return;
     }
+
+    std::string content = RunCommand(
+        std::wstring(L"docker exec ") + CONTAINER + L" cat /src/build/bin/eqemu_config.json");
     if (content.empty()) {
-        SetWindowTextW(g_hwndStatusResult,
-            (std::wstring(L"Failed: eqemu_config.json not found.\r\n\r\n"
-             L"Looked in:\r\n  ") + g_installDir + L"\\config\\eqemu_config.json\r\n  "
-             + g_installDir + L"\\eqemu_config.json").c_str());
+        SetServerPanelResult(
+            L"Failed: could not read /src/build/bin/eqemu_config.json from the running container.");
         return;
     }
     auto pos = content.find("\"longname\"");
     if (pos == std::string::npos) {
-        SetWindowTextW(g_hwndStatusResult,
-            (std::wstring(L"Failed: \"longname\" not found in ") + foundPath).c_str());
+        SetServerPanelResult(L"Failed: \"longname\" not found in /src/build/bin/eqemu_config.json.");
         return;
     }
     pos = content.find(':', pos);
@@ -5848,16 +6304,24 @@ static void DoSetServerName() {
     auto end = content.find('"', pos + 1);
     std::string newName(name, name + wcslen(name));
     content = content.substr(0, pos + 1) + newName + content.substr(end);
-    std::ofstream fout(foundPath, std::ios::trunc);
-    if (!fout) {
-        SetWindowTextW(g_hwndStatusResult,
-            (std::wstring(L"Failed: could not write to ") + foundPath).c_str());
+
+    wchar_t tempPath[MAX_PATH];
+    wcscpy_s(tempPath, g_installDir);
+    PathAppendW(tempPath, L"eqemu_config.container.tmp.json");
+    if (!WriteTextFileWide(tempPath, ToWide(content))) {
+        SetServerPanelResult(std::wstring(L"Failed: could not write temp file ") + tempPath);
         return;
     }
-    fout << content;
-    fout.close();
-    SetWindowTextW(g_hwndStatusResult,
-        (std::wstring(L"Server name set to '") + name + L"'.\r\n\r\nRestarting server...").c_str());
+
+    DWORD copyOutEc = 0;
+    RunCommand(std::wstring(L"docker cp \"") + tempPath + L"\" " + CONTAINER +
+               L":/src/build/bin/eqemu_config.json", g_installDir, &copyOutEc);
+    if (copyOutEc != 0) {
+        SetServerPanelResult(L"Failed: could not copy updated eqemu_config.json into the container.");
+        return;
+    }
+
+    SetServerPanelResult(std::wstring(L"Server name set to '") + name + L"'.\r\n\r\nRestarting server...");
     DoRestartServerAsync();
 }
 
@@ -5880,7 +6344,7 @@ static void DoSetMarquee() {
     std::wstring check = RunQuery(
         L"SHOW TABLES LIKE 'tblloginserversettings'");
     if (check == L"(no results)") {
-        SetWindowTextW(g_hwndStatusResult,
+        SetServerPanelResult(
             L"Failed: table 'tblloginserversettings' does not exist in the quarm database.\r\n\r\n"
             L"The marquee text may be hardcoded in this server build.");
         return;
@@ -5890,12 +6354,9 @@ static void DoSetMarquee() {
         if (c == L'\'') safe += L"''";
         else safe += c;
     }
-    RunQuery(
-        L"INSERT INTO tblloginserversettings (type, value) VALUES ('ticker', '" + safe + L"') "
-        L"ON DUPLICATE KEY UPDATE value='" + safe + L"'");
-    SetWindowTextW(g_hwndStatusResult,
-        (std::wstring(L"Login marquee set to '") + msg + L"'.\r\n\r\n"
-         L"Reconnect to the server select screen to see the change.").c_str());
+    RunQuery(L"UPDATE tblloginserversettings SET value='" + safe + L"' WHERE type='ticker'");
+    SetServerPanelResult(std::wstring(L"Login marquee set to '") + msg + L"'.\r\n\r\n"
+         L"Reconnect to the server select screen to see the change.");
 }
 
 
@@ -6038,6 +6499,13 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         g_serverRunning = (wp != 0);
         int curTab = TabCtrl_GetCurSel(g_hwndTab);
         if (curTab == TAB_STATUS) RefreshStatusTab();
+        else if (curTab == TAB_ZONES) {
+            if (g_serverRunning) DoRefreshZones();
+            else if (g_hwndZoneList) {
+                SendMessage(g_hwndZoneList, LB_RESETCONTENT, 0, 0);
+                SendMessageW(g_hwndZoneList, LB_ADDSTRING, 0, (LPARAM)L"(server is not running)");
+            }
+        }
         else {
             SetStatus(g_serverRunning ? L"Server is running" : L"Server is stopped");
         }
