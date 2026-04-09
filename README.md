@@ -175,20 +175,3 @@ This removes the app, firewall rules, shortcuts, and install folder. Your Docker
 Thanks to surron, darius, kicnlag, solar, and secrets for framework, ingenuity, grounding, advice, and space to code. Thanks to Starrlord for Quality Assurance testing.
 
 Based on code frame from [EQMacEmuDockerHub](https://github.com/jcon321/EQMacEmuDockerHub).
-
----
-
-## Changelog
-
-### v0.997
-- **Status tab** — Added server name field to change the name shown at server select (previously hardcoded as "New Devbox Server")
-- **Status tab** — Added login marquee field to change the scrolling message shown at the login screen (previously hardcoded as "Welcome to EQMacEmu")
-- **Status tab** — App version number now displayed in the top-right corner
-- **Status tab** — Era change confirmation dialog now prominently warns that a server restart will disconnect all players, and notes that characters in restricted zones will be moved to East Commons on next login
-- **Status tab** — Era dropdown no longer reverts to the server value while the user has a pending unsaved change
-- **Admin Tools** — Fixed God Mode toggle to correctly use the `account` table (`flymode`, `gmspeed`, `gminvul`, `hideme`) instead of the non-existent `invulnerable` column
-- **Pro Tools** — Fixed Give Item to use the correct general inventory slot range (slotGeneral1–8, slots 22–29); previously used 23–30 causing items to be placed in wrong slots
-- **Pro Tools / Player Tools** — Fixed item and NPC search to handle backtick characters and match names whether the user types a space or underscore (e.g. "Flowing Black Silk" finds "Flowing_Black_Silk")
-- **Player Tools** — Move to Zone now shows a prominent warning when the target character is online, explicitly noting that this feature is designed for offline use and that proceeding may crash the server
-- **Network tab** — Removed Test Port 6000 button
-- **Advanced tab** — Open Docker Desktop now locates the executable via the Windows registry and all drive letters rather than assuming `C:\Program Files`; falls back to Start Menu launch if not found
