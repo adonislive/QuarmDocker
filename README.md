@@ -69,7 +69,7 @@ Open the **Quarm Docker Server** app from your desktop shortcut. All server mana
 |-----|-------------|
 | **Status** | Start, stop, and restart the server. Shows service health, uptime, active player count, and app version. Set the server era (Classic through Planes of Power or All Expansions), change the server name shown at server select, change the login screen scrolling marquee, change the Message of the Day, send server-wide announcements, and manage raid bosses (check, spawn, despawn, list active). |
 | **Player Tools** | Look up characters by account or name, view inventory, currency, and corpses. Move stuck characters to their bind point or a specific zone. Search characters by level range and class. View recent logins, who is online, and IP history. Load and edit character faction standings with quick-set presets (Ally, Warmly, Indifferent, KOS). |
-| **Pro Tools** | Full character management — set level, AA points, race, class, gender, rename characters, set surnames, and assign AA titles. Give platinum, search and give items by name or ID, search and scribe spells (individually or all at once), view and edit individual skills or max all skills, and look up loot tables by NPC or item name. |
+| **Pro Tools** | Full character management — set level, AA points, race, class, gender, rename characters, set surnames, and assign AA titles. Give platinum, search and give items by name or ID, open the Custom Item Editor to duplicate stock items into the `900000+` range, customize those variants, restore them from their source item, delete them from loot and merchant data, and still use Give Item with either stock or custom IDs. Search and scribe spells, or use the Spellbook Builder to load class spells by level range, optionally limit to missing spells, optionally clear the spellbook first, and then bulk-scribe the loaded results. A separate Clear Existing Spellbook action wipes both the spellbook and memorized gems. View and edit individual skills or max all skills, and look up loot tables by NPC or item name. |
 | **Admin Tools** | Manage accounts — make/remove GM, list accounts, reset passwords, suspend/unsuspend, ban/unban, and view active bans. View server-wide statistics. Delete characters (with double confirmation). Toggle in-game GM flag and God Mode on individual characters. |
 | **Zones** | View all running zones with spawn counts and ZEM (Zone Experience Modifier) values. Stop, restart, or repop individual zones. Start new zone instances, search for zones by name, and adjust dynamic zone count. Full zone environment editor — load any zone and adjust weather type, fog (start, end, density, color), and clip distances. |
 | **Server** | Adjust server-wide XP and AA rate multipliers with sliders (1x–10x). Full rule editor — search, browse, and modify any server rule value. Guild manager — list guilds, create new guilds, set leaders, disband, and view rosters. |
@@ -93,6 +93,42 @@ The in-game MOTD is shown to players when they zone. Edit the **MOTD** field on 
 
 ### Server Era
 Select an era from the dropdown on the **Status** tab and click **Set Era**. This restricts zone access and expansion flags to the chosen era. A server restart is required. Characters in zones that become restricted will be moved to a safe zone (typically East Commons) on their next login.
+
+### Spellbook Builder
+On the **Pro Tools** tab, the spell section now includes a **Spellbook Builder** for rebuilding or filling out a character's spellbook without manually searching for every spell.
+
+- Enter the target character name
+- Leave **Use Character's Actual Class** enabled to pull the class from the database automatically, or turn it off and choose a class manually
+- Choose **Min Level** and **Max Level**
+- Leave **Only Missing Spells** enabled to avoid re-scribing spells the character already knows
+- Optionally enable **Also Clear Before Scribing** if you want the bulk scribe action to wipe the spellbook and memorized gems first
+- Click **Load Matching Spells** to preview the exact spell list that will be used
+- Click **Scribe Loaded Spells** to apply the loaded set
+
+If you want to wipe the spellbook without loading anything first, use **Clear Existing Spellbook**. This clears both `character_spells` and `character_memmed_spells`.
+
+### Custom Item Editor
+On the **Pro Tools** tab, the item section now includes **Load Item Editor**, which opens a separate **Custom Item Editor** window for item variant work.
+
+- Search or enter an item ID, then click **Load Item Editor**
+- Stock items load read-only
+- Click **Duplicate as Custom** to clone the item into the `900000+` range
+- New custom variants default to the name `Custom <Original Name>`
+- The duplicate is added alongside the original in both loot tables and merchant lists
+- Edit the custom variant's approved fields, then click **Save Changes**
+- Use **Restore to Default** to copy the source item's stats and fields back onto the custom item while keeping the custom item ID and its loot/merchant placements
+- Use **Delete Custom Item** to remove the custom variant from loot tables, merchant lists, the custom item metadata table, and the `items` row itself
+
+The editor includes the approved v1 fields:
+
+- `Name`, `Lore`, `IDFile`, `Icon`, `Price`, `SellRate`, `Weight`
+- `AC`, `HP`, `Mana`, primary stats, and resists
+- `Damage`, `Delay`, `Classes`, `Races`, `Slots`
+- `ReqLevel`, `RecLevel`, `MaxCharges`
+- `Click`, `Proc`, `Worn`, and `Focus` effect IDs
+- `Magic`, `Lore Flag`, `No Drop`, `No Rent`, and `Attuneable`
+
+**Give Item** still works with both stock and custom item IDs.
 
 ---
 

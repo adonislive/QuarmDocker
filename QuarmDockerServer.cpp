@@ -128,6 +128,7 @@ static const wchar_t* APP_CLASS   = L"QuarmServerManager";
 static const wchar_t* APP_TITLE   = L"Quarm Docker Server";
 static const wchar_t* APP_VERSION = L"v0.999";
 static const wchar_t* PANEL_CLASS = L"QSMPanel";
+static const wchar_t* ITEM_EDITOR_CLASS = L"QSMItemEditor";
 static const wchar_t* CONTAINER   = L"quarm-server";
 static const int      NUM_TABS    = 10;
 static const int      POLL_MS     = 5000;
@@ -219,6 +220,7 @@ static const wchar_t* TAB_LABELS[NUM_TABS] = {
 // --- Pro Tools: Currency + Inventory (own IDs, separate from Player Tools) ---
 #define IDC_BTN_PRO_CURRENCY     5710
 #define IDC_BTN_PRO_INVENTORY    5711
+#define IDC_BTN_ITEM_LOAD        5712
 
 // --- Log viewer: new controls ---
 #define IDC_LOG_FILE_COMBO       5900
@@ -274,32 +276,88 @@ static const wchar_t* TAB_LABELS[NUM_TABS] = {
 #define IDC_SPELL_LIST           6312
 #define IDC_BTN_SCRIBE_SPELL     6313
 #define IDC_BTN_SCRIBE_ALL       6314
+#define IDC_CHK_SPELL_USE_ACTUAL 6315
+#define IDC_SPELL_CLASS_COMBO    6316
+#define IDC_SPELL_MIN_LEVEL      6317
+#define IDC_SPELL_MAX_LEVEL      6318
+#define IDC_CHK_SPELL_ONLY_MISS  6319
+#define IDC_BTN_LOAD_SPELLSET    6320
+#define IDC_CHK_SPELL_CLEAR_FIRST 6328
+#define IDC_BTN_CLEAR_SPELLBOOK  6329
+
+// --- Item Editor window ---
+#define IDC_ITEM_STATUS_LABEL    5800
+#define IDC_ITEM_SOURCE_LABEL    5801
+#define IDC_ITEM_EDIT_NAME       5802
+#define IDC_ITEM_EDIT_LORE       5803
+#define IDC_ITEM_EDIT_IDFILE     5804
+#define IDC_ITEM_EDIT_ICON       5805
+#define IDC_ITEM_EDIT_PRICE      5806
+#define IDC_ITEM_EDIT_SELLRATE   5807
+#define IDC_ITEM_EDIT_WEIGHT     5808
+#define IDC_ITEM_EDIT_AC         5809
+#define IDC_ITEM_EDIT_HP         5810
+#define IDC_ITEM_EDIT_MANA       5811
+#define IDC_ITEM_EDIT_ASTR       5812
+#define IDC_ITEM_EDIT_ASTA       5813
+#define IDC_ITEM_EDIT_AAGI       5814
+#define IDC_ITEM_EDIT_ADEX       5815
+#define IDC_ITEM_EDIT_ACHA       5816
+#define IDC_ITEM_EDIT_AINT       5817
+#define IDC_ITEM_EDIT_AWIS       5818
+#define IDC_ITEM_EDIT_CR         5819
+#define IDC_ITEM_EDIT_DR         5820
+#define IDC_ITEM_EDIT_FR         5821
+#define IDC_ITEM_EDIT_MR         5822
+#define IDC_ITEM_EDIT_PR         5823
+#define IDC_ITEM_EDIT_DAMAGE     5824
+#define IDC_ITEM_EDIT_DELAY      5825
+#define IDC_ITEM_EDIT_CLASSES    5826
+#define IDC_ITEM_EDIT_RACES      5827
+#define IDC_ITEM_EDIT_SLOTS      5828
+#define IDC_ITEM_EDIT_REQLEVEL   5829
+#define IDC_ITEM_EDIT_RECLEVEL   5830
+#define IDC_ITEM_EDIT_MAXCHARGES 5831
+#define IDC_ITEM_EDIT_CLICKEFFECT 5832
+#define IDC_ITEM_EDIT_PROCEFFECT 5833
+#define IDC_ITEM_EDIT_WORNEFFECT 5834
+#define IDC_ITEM_EDIT_FOCUSEFFECT 5835
+#define IDC_ITEM_CHK_MAGIC       5836
+#define IDC_ITEM_CHK_LOREFLAG    5837
+#define IDC_ITEM_CHK_NODROP      5838
+#define IDC_ITEM_CHK_NORENT      5839
+#define IDC_ITEM_CHK_ATTUNEABLE  5840
+#define IDC_BTN_ITEM_SAVE        5841
+#define IDC_BTN_ITEM_RESTORE     5842
+#define IDC_BTN_ITEM_DELETE      5843
+#define IDC_BTN_ITEM_DUPLICATE   5844
+#define IDC_BTN_ITEM_CLOSE       5845
 
 // --- Pro Tools: Faction Editor ---
-#define IDC_BTN_LOAD_FACTIONS    6320
-#define IDC_FACTION_LIST         6321
-#define IDC_FACTION_VALUE        6322
-#define IDC_BTN_SET_FACTION      6323
-#define IDC_BTN_FACTION_ALLY     6324
-#define IDC_BTN_FACTION_WARMLY   6325
-#define IDC_BTN_FACTION_INDIFF   6326
-#define IDC_BTN_FACTION_KOS      6327
+#define IDC_BTN_LOAD_FACTIONS    6330
+#define IDC_FACTION_LIST         6331
+#define IDC_FACTION_VALUE        6332
+#define IDC_BTN_SET_FACTION      6333
+#define IDC_BTN_FACTION_ALLY     6334
+#define IDC_BTN_FACTION_WARMLY   6335
+#define IDC_BTN_FACTION_INDIFF   6336
+#define IDC_BTN_FACTION_KOS      6337
 
 // --- Pro Tools: Skill Maxer ---
-#define IDC_BTN_MAX_SKILLS       6330
+#define IDC_BTN_MAX_SKILLS       6340
 
 // --- Player Tools: Loot Viewer ---
-#define IDC_LOOT_SEARCH          6340
-#define IDC_BTN_LOOT_BY_NPC      6341
-#define IDC_BTN_LOOT_BY_ITEM     6342
+#define IDC_LOOT_SEARCH          6350
+#define IDC_BTN_LOOT_BY_NPC      6351
+#define IDC_BTN_LOOT_BY_ITEM     6352
 
 // --- Pro Tools: Skill Editor ---
-#define IDC_SKILL_SEARCH         6350
-#define IDC_BTN_SKILL_SEARCH     6351
-#define IDC_SKILL_LIST           6352
-#define IDC_SKILL_VALUE          6353
-#define IDC_BTN_SET_SKILL        6354
-#define IDC_BTN_LOAD_SKILLS      6355
+#define IDC_SKILL_SEARCH         6360
+#define IDC_BTN_SKILL_SEARCH     6361
+#define IDC_SKILL_LIST           6362
+#define IDC_SKILL_VALUE          6363
+#define IDC_BTN_SET_SKILL        6364
+#define IDC_BTN_LOAD_SKILLS      6365
 
 // --- Admin Tools: GM/GodMode toggles ---
 #define IDC_ADM_GM_CHAR          6400
@@ -521,6 +579,9 @@ static std::vector<RuleInfo> g_rulesFiltered;
 // Pro Tools new handles
 static HWND g_hwndSpellSearch  = nullptr;
 static HWND g_hwndSpellList    = nullptr;
+static HWND g_hwndSpellClassCbo = nullptr;
+static HWND g_hwndSpellMinLevel = nullptr;
+static HWND g_hwndSpellMaxLevel = nullptr;
 static HWND g_hwndFactionList  = nullptr;
 static HWND g_hwndFactionValue = nullptr;
 static HWND g_hwndLootSearch   = nullptr;
@@ -531,6 +592,10 @@ static HWND g_hwndSkillValue   = nullptr;
 static HWND g_hwndAdmGMChar    = nullptr;
 static HWND g_hwndCloneSource  = nullptr;
 static HWND g_hwndCloneNewName = nullptr;
+static HWND g_hwndItemEditor   = nullptr;
+static int  g_itemEditorItemId = 0;
+static int  g_itemEditorSourceItemId = 0;
+static bool g_itemEditorIsCustom = false;
 
 // Zone management handles
 static HWND g_hwndZoneList     = nullptr;
@@ -744,6 +809,16 @@ static std::wstring NormalizeNewlines(const std::wstring& s) {
     return out;
 }
 
+static std::wstring SqlEscape(const std::wstring& s) {
+    std::wstring out;
+    out.reserve(s.size() + s.size() / 8);
+    for (wchar_t c : s) {
+        if (c == L'\'') out += L"''";
+        else out += c;
+    }
+    return out;
+}
+
 // Run a mariadb query inside the container, return result as wstring
 static std::wstring RunQuery(const std::wstring& sql) {
     std::wstring cmd = std::wstring(L"docker exec ") + CONTAINER +
@@ -759,6 +834,17 @@ static std::wstring RunQuery(const std::wstring& sql) {
 static std::wstring RunQueryTable(const std::wstring& sql) {
     std::wstring cmd = std::wstring(L"docker exec ") + CONTAINER +
         L" mariadb --table -e \"" + sql + L"\" quarm";
+    std::string out = TrimRight(RunCommand(cmd));
+    if (out.empty()) return L"(no results)";
+    return NormalizeNewlines(ToWide(out));
+}
+
+// Run a query intended to return raw scalar/text rows without column headers.
+// Use this for programmatic parsing where mariadb's default header row would
+// otherwise break numeric/string extraction.
+static std::wstring RunQueryNoHeaders(const std::wstring& sql) {
+    std::wstring cmd = std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb -N -e \"" + sql + L"\" quarm";
     std::string out = TrimRight(RunCommand(cmd));
     if (out.empty()) return L"(no results)";
     return NormalizeNewlines(ToWide(out));
@@ -1444,6 +1530,17 @@ static void SetGameResult(const std::wstring& text);
 static void DoRestartServerAsync();
 static void DoRefreshZones();
 static std::wstring ExtractZoneFromList();
+static void UpdateSpellbookBuilderClassMode();
+static void DoLoadSpellSet();
+static void DoClearSpellbook();
+static LRESULT CALLBACK ItemEditorProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
+static void OpenItemEditorWindow();
+static bool LoadItemIntoEditor(int itemId);
+static void DoLoadItemEditor();
+static void DoDuplicateItemVariant();
+static void DoSaveCustomItem();
+static void DoRestoreCustomItem();
+static void DoDeleteCustomItem();
 
 // ============================================================
 // TAB 1 — STATUS PANEL
@@ -4104,11 +4201,7 @@ static void DoSpellSearch() {
             L"Spell Search", MB_OK | MB_ICONINFORMATION);
         return;
     }
-    std::wstring safe;
-    for (wchar_t c : std::wstring(term)) {
-        if (c == L'\'') safe += L"''";
-        else safe += c;
-    }
+    std::wstring safe = SqlEscape(term);
     std::wstring sql =
         L"SELECT id, name FROM spells_new WHERE name LIKE '%" + safe +
         L"%' ORDER BY name LIMIT 100";
@@ -4122,7 +4215,6 @@ static void DoSpellSearch() {
         line.erase(line.find_last_not_of(" \t\r\n") + 1);
         if (line.empty()) continue;
         std::wstring wide = ToWide(line);
-        // Replace tab with ": "
         auto tab = wide.find(L'\t');
         if (tab != std::wstring::npos) wide.replace(tab, 1, L": ");
         SendMessageW(g_hwndSpellList, LB_ADDSTRING, 0, (LPARAM)wide.c_str());
@@ -4130,6 +4222,205 @@ static void DoSpellSearch() {
     }
     wchar_t buf[64]; swprintf_s(buf, L"Found %d spells.", count);
     SetGameResult(buf);
+}
+
+static bool ParseSpellListEntry(const std::wstring& item, int* spellId,
+                                int* spellLevel = nullptr, std::wstring* spellName = nullptr) {
+    auto colon = item.find(L':');
+    if (colon == std::wstring::npos) return false;
+
+    size_t idEnd = colon;
+    while (idEnd > 0 && item[idEnd - 1] == L' ') --idEnd;
+    size_t idStart = idEnd;
+    while (idStart > 0 && iswdigit(item[idStart - 1])) --idStart;
+    if (idStart == idEnd) return false;
+
+    if (spellId) *spellId = _wtoi(item.substr(idStart, idEnd - idStart).c_str());
+
+    if (spellLevel) {
+        *spellLevel = -1;
+        if (item.rfind(L"Lv ", 0) == 0) {
+            size_t levelStart = 3;
+            size_t levelEnd = levelStart;
+            while (levelEnd < item.size() && iswdigit(item[levelEnd])) ++levelEnd;
+            if (levelEnd > levelStart)
+                *spellLevel = _wtoi(item.substr(levelStart, levelEnd - levelStart).c_str());
+        }
+    }
+
+    if (spellName) {
+        *spellName = item.substr(colon + 1);
+        while (!spellName->empty() && spellName->front() == L' ')
+            spellName->erase(spellName->begin());
+    }
+    return true;
+}
+
+static bool TryGetCharacterClass(const std::wstring& chr, int* classId) {
+    std::wstring sql =
+        L"SELECT `class` FROM character_data WHERE LOWER(name)=LOWER('" + SqlEscape(chr) + L"') LIMIT 1";
+    std::wstring out = TrimRight(RunQueryNoHeaders(sql));
+    if (out.empty() || out == L"(no results)") return false;
+    int parsed = _wtoi(out.c_str());
+    if (parsed < 1 || parsed > 15) return false;
+    if (classId) *classId = parsed;
+    return true;
+}
+
+static int GetNextSpellbookSlot(const std::wstring& chr) {
+    std::wstring sql =
+        L"SELECT IFNULL(MAX(slot_id)+1, 0) FROM character_spells "
+        L"WHERE id=(SELECT id FROM character_data WHERE LOWER(name)=LOWER('" + SqlEscape(chr) + L"'))";
+    std::wstring out = TrimRight(RunQueryNoHeaders(sql));
+    if (out.empty() || out == L"(no results)") return 0;
+    int nextSlot = _wtoi(out.c_str());
+    return nextSlot < 0 ? 0 : nextSlot;
+}
+
+static bool CharacterHasSpell(const std::wstring& chr, int spellId) {
+    std::wstring sql =
+        L"SELECT COUNT(*) FROM character_spells "
+        L"WHERE id=(SELECT id FROM character_data WHERE LOWER(name)=LOWER('" + SqlEscape(chr) + L"')) "
+        L"AND spell_id=" + std::to_wstring(spellId);
+    return _wtoi(TrimRight(RunQueryNoHeaders(sql)).c_str()) > 0;
+}
+
+static bool InsertSpellIntoBook(const std::wstring& chr, int spellId, int& nextSlot) {
+    if (CharacterHasSpell(chr, spellId))
+        return false;
+    std::wstring sql =
+        L"INSERT INTO character_spells (id, slot_id, spell_id) VALUES ("
+        L"(SELECT id FROM character_data WHERE LOWER(name)=LOWER('" + SqlEscape(chr) + L"')), " +
+        std::to_wstring(nextSlot) + L", " + std::to_wstring(spellId) + L")";
+    RunQuery(sql);
+    ++nextSlot;
+    return true;
+}
+
+static void ClearCharacterSpellbookRows(const std::wstring& chr) {
+    std::wstring escaped = SqlEscape(chr);
+    RunQuery(L"DELETE FROM character_memmed_spells WHERE id=(SELECT id FROM character_data WHERE LOWER(name)=LOWER('" +
+             escaped + L"'))");
+    RunQuery(L"DELETE FROM character_spells WHERE id=(SELECT id FROM character_data WHERE LOWER(name)=LOWER('" +
+             escaped + L"'))");
+}
+
+static bool ResolveSpellBuilderClass(const std::wstring& chr, int* classId, std::wstring* className) {
+    HWND chk = GetDlgItem(g_hwndPanels[TAB_GAME], IDC_CHK_SPELL_USE_ACTUAL);
+    bool useActual = chk && (SendMessage(chk, BM_GETCHECK, 0, 0) == BST_CHECKED);
+
+    int resolved = 0;
+    if (useActual) {
+        if (!TryGetCharacterClass(chr, &resolved)) {
+            MessageBoxW(g_hwndMain, L"Character was not found, or its class could not be determined.",
+                L"Load Matching Spells", MB_OK | MB_ICONWARNING);
+            return false;
+        }
+        if (g_hwndSpellClassCbo)
+            SendMessage(g_hwndSpellClassCbo, CB_SETCURSEL, resolved - 1, 0);
+    } else {
+        int sel = g_hwndSpellClassCbo ? (int)SendMessage(g_hwndSpellClassCbo, CB_GETCURSEL, 0, 0) : CB_ERR;
+        if (sel == CB_ERR) {
+            MessageBoxW(g_hwndMain, L"Select a class first.", L"Load Matching Spells",
+                MB_OK | MB_ICONINFORMATION);
+            return false;
+        }
+        resolved = sel + 1;
+    }
+
+    if (classId) *classId = resolved;
+    if (className) *className = CLASS_NAMES[resolved - 1];
+    return true;
+}
+
+static void UpdateSpellbookBuilderClassMode() {
+    HWND chk = GetDlgItem(g_hwndPanels[TAB_GAME], IDC_CHK_SPELL_USE_ACTUAL);
+    bool useActual = chk && (SendMessage(chk, BM_GETCHECK, 0, 0) == BST_CHECKED);
+    if (g_hwndSpellClassCbo)
+        EnableWindow(g_hwndSpellClassCbo, !useActual);
+}
+
+static void DoLoadSpellSet() {
+    if (!CheckServerRunning(L"Load Matching Spells")) return;
+
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndProCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name in the Character field.",
+            L"Load Matching Spells", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    if (!TryGetCharacterClass(chr, nullptr)) {
+        MessageBoxW(g_hwndMain, L"Character was not found.", L"Load Matching Spells",
+            MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    int minSel = g_hwndSpellMinLevel ? (int)SendMessage(g_hwndSpellMinLevel, CB_GETCURSEL, 0, 0) : CB_ERR;
+    int maxSel = g_hwndSpellMaxLevel ? (int)SendMessage(g_hwndSpellMaxLevel, CB_GETCURSEL, 0, 0) : CB_ERR;
+    if (minSel == CB_ERR || maxSel == CB_ERR) {
+        MessageBoxW(g_hwndMain, L"Select both a minimum and maximum level.",
+            L"Load Matching Spells", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+
+    int minLevel = minSel + 1;
+    int maxLevel = maxSel + 1;
+    if (minLevel > maxLevel) {
+        MessageBoxW(g_hwndMain, L"Minimum level cannot be greater than maximum level.",
+            L"Load Matching Spells", MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    int classId = 0;
+    std::wstring className;
+    if (!ResolveSpellBuilderClass(chr, &classId, &className))
+        return;
+
+    HWND chkMissing = GetDlgItem(g_hwndPanels[TAB_GAME], IDC_CHK_SPELL_ONLY_MISS);
+    bool onlyMissing = chkMissing && (SendMessage(chkMissing, BM_GETCHECK, 0, 0) == BST_CHECKED);
+
+    std::wstring classCol = L"classes" + std::to_wstring(classId);
+    std::wstring escapedChr = SqlEscape(chr);
+    std::wstring sql =
+        L"SELECT s.id, s.name, s." + classCol + L" AS spell_level "
+        L"FROM spells_new s WHERE s." + classCol + L" BETWEEN " +
+        std::to_wstring(minLevel) + L" AND " + std::to_wstring(maxLevel) +
+        L" AND s.allow_spellscribe = 1 AND s.disabled = 0";
+    if (onlyMissing) {
+        sql += L" AND NOT EXISTS (SELECT 1 FROM character_spells cs "
+               L"WHERE cs.id=(SELECT id FROM character_data WHERE LOWER(name)=LOWER('" + escapedChr +
+               L"')) AND cs.spell_id=s.id)";
+    }
+    sql += L" ORDER BY s." + classCol + L", s.name, s.id";
+
+    std::string out = RunCommand(std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb -N -e \"" + sql + L"\" quarm");
+
+    SendMessage(g_hwndSpellList, LB_RESETCONTENT, 0, 0);
+    int count = 0;
+    std::istringstream ss(out);
+    std::string line;
+    while (std::getline(ss, line)) {
+        line.erase(line.find_last_not_of(" \t\r\n") + 1);
+        if (line.empty()) continue;
+        std::wstring wide = ToWide(line);
+        size_t first = wide.find(L'\t');
+        size_t second = (first == std::wstring::npos) ? std::wstring::npos : wide.find(L'\t', first + 1);
+        if (first == std::wstring::npos || second == std::wstring::npos) continue;
+        std::wstring id = wide.substr(0, first);
+        std::wstring name = wide.substr(first + 1, second - first - 1);
+        std::wstring level = wide.substr(second + 1);
+        std::wstring display = L"Lv " + level + L" | " + id + L": " + name;
+        SendMessageW(g_hwndSpellList, LB_ADDSTRING, 0, (LPARAM)display.c_str());
+        ++count;
+    }
+
+    std::wstring summary = className + L" spells level " + std::to_wstring(minLevel) + L"-" +
+        std::to_wstring(maxLevel) + L": " + std::to_wstring(count) + L" loaded";
+    if (onlyMissing) summary += L" (missing only)";
+    summary += L".";
+    SetGameResult(summary);
 }
 
 static void DoScribeSpell() {
@@ -4141,6 +4432,11 @@ static void DoScribeSpell() {
             L"Scribe Spell", MB_OK | MB_ICONINFORMATION);
         return;
     }
+    if (!TryGetCharacterClass(chr, nullptr)) {
+        MessageBoxW(g_hwndMain, L"Character was not found.", L"Scribe Spell",
+            MB_OK | MB_ICONWARNING);
+        return;
+    }
     int sel = (int)SendMessage(g_hwndSpellList, LB_GETCURSEL, 0, 0);
     if (sel == LB_ERR) {
         MessageBoxW(g_hwndMain, L"Select a spell from the search results.",
@@ -4149,37 +4445,27 @@ static void DoScribeSpell() {
     }
     wchar_t item[512] = {};
     SendMessageW(g_hwndSpellList, LB_GETTEXT, sel, (LPARAM)item);
-    // Extract spell ID (everything before ":")
-    std::wstring spellStr = item;
-    auto colon = spellStr.find(L':');
-    if (colon == std::wstring::npos) return;
-    std::wstring spellId = spellStr.substr(0, colon);
-    // Trim whitespace
-    while (!spellId.empty() && spellId.back() == L' ') spellId.pop_back();
+    int spellId = 0;
+    std::wstring spellName;
+    if (!ParseSpellListEntry(item, &spellId, nullptr, &spellName))
+        return;
 
     if (IsCharacterOnline(chr) == 1) {
         MessageBoxW(g_hwndMain, L"Character must be offline to scribe spells.",
             L"Character Online", MB_OK | MB_ICONWARNING);
         return;
     }
-    // Find next slot
-    std::wstring slotSql =
-        L"SELECT IFNULL(MAX(slot_id)+1, 0) FROM character_spells "
-        L"WHERE id=(SELECT id FROM character_data WHERE LOWER(name)=LOWER('" +
-        std::wstring(chr) + L"'))";
-    std::string slotOut = TrimRight(RunCommand(std::wstring(L"docker exec ") + CONTAINER +
-        L" mariadb -N -e \"" + slotSql + L"\" quarm"));
-    std::wstring slot = ToWide(slotOut);
-    // Trim whitespace
-    while (!slot.empty() && (slot.back() == L'\n' || slot.back() == L'\r' || slot.back() == L' '))
-        slot.pop_back();
-    if (slot.empty()) slot = L"0";
+    int nextSlot = GetNextSpellbookSlot(chr);
+    if (!InsertSpellIntoBook(chr, spellId, nextSlot)) {
+        std::wstring msg = spellName.empty()
+            ? std::wstring(L"Selected spell is already in the spellbook.")
+            : (spellName + L" is already in the spellbook.");
+        SetGameResult(msg);
+        return;
+    }
 
-    RunQuery(L"INSERT INTO character_spells (id, slot_id, spell_id) VALUES ("
-             L"(SELECT id FROM character_data WHERE LOWER(name)=LOWER('" +
-             std::wstring(chr) + L"')), " + slot + L", " + spellId + L")");
-    SetGameResult((L"Scribed spell " + spellStr + L" to " + std::wstring(chr) +
-                   L" at slot " + slot + L".").c_str());
+    std::wstring subject = spellName.empty() ? std::to_wstring(spellId) : spellName;
+    SetGameResult(L"Scribed " + subject + L" to " + std::wstring(chr) + L".");
 }
 
 static void DoScribeAll() {
@@ -4190,9 +4476,66 @@ static void DoScribeAll() {
         MessageBoxW(g_hwndMain, L"Enter a character name.", L"Scribe All", MB_OK | MB_ICONINFORMATION);
         return;
     }
+    if (!TryGetCharacterClass(chr, nullptr)) {
+        MessageBoxW(g_hwndMain, L"Character was not found.", L"Scribe Loaded Spells",
+            MB_OK | MB_ICONWARNING);
+        return;
+    }
     int count = (int)SendMessage(g_hwndSpellList, LB_GETCOUNT, 0, 0);
     if (count <= 0) {
-        MessageBoxW(g_hwndMain, L"No spells in search results.", L"Scribe All", MB_OK | MB_ICONINFORMATION);
+        MessageBoxW(g_hwndMain, L"No spells are loaded.", L"Scribe Loaded Spells", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    if (IsCharacterOnline(chr) == 1) {
+        MessageBoxW(g_hwndMain, L"Character must be offline.", L"Character Online", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    HWND chkClear = GetDlgItem(g_hwndPanels[TAB_GAME], IDC_CHK_SPELL_CLEAR_FIRST);
+    bool clearFirst = chkClear && (SendMessage(chkClear, BM_GETCHECK, 0, 0) == BST_CHECKED);
+
+    std::wstring msg;
+    if (clearFirst) {
+        msg = L"Clear existing spellbook and memorized gems, then scribe " +
+              std::to_wstring(count) + L" loaded spells to " + std::wstring(chr) + L"?";
+    } else {
+        msg = L"Scribe " + std::to_wstring(count) + L" loaded spells to " + std::wstring(chr) + L"?";
+    }
+    int r = MessageBoxW(g_hwndMain,
+        msg.c_str(), L"Confirm Scribe Loaded Spells", MB_YESNO | MB_ICONQUESTION);
+    if (r != IDYES) return;
+
+    if (clearFirst)
+        ClearCharacterSpellbookRows(chr);
+
+    int nextSlot = clearFirst ? 0 : GetNextSpellbookSlot(chr);
+    int scribed = 0;
+    for (int i = 0; i < count; ++i) {
+        wchar_t item[512] = {};
+        SendMessageW(g_hwndSpellList, LB_GETTEXT, i, (LPARAM)item);
+        int spellId = 0;
+        if (!ParseSpellListEntry(item, &spellId))
+            continue;
+        if (InsertSpellIntoBook(chr, spellId, nextSlot))
+            ++scribed;
+    }
+    std::wstring result = L"Scribed " + std::to_wstring(scribed) + L" spells to " + std::wstring(chr) + L".";
+    if (clearFirst)
+        result += L" Existing spellbook was cleared first.";
+    SetGameResult(result);
+}
+
+static void DoClearSpellbook() {
+    if (!CheckServerRunning(L"Clear Existing Spellbook")) return;
+    wchar_t chr[128] = {};
+    GetWindowTextW(g_hwndProCharName, chr, 128);
+    if (!chr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter a character name in the Character field.",
+            L"Clear Existing Spellbook", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    if (!TryGetCharacterClass(chr, nullptr)) {
+        MessageBoxW(g_hwndMain, L"Character was not found.", L"Clear Existing Spellbook",
+            MB_OK | MB_ICONWARNING);
         return;
     }
     if (IsCharacterOnline(chr) == 1) {
@@ -4200,25 +4543,12 @@ static void DoScribeAll() {
         return;
     }
     int r = MessageBoxW(g_hwndMain,
-        (L"Scribe all " + std::to_wstring(count) + L" spells to " + std::wstring(chr) + L"?").c_str(),
-        L"Confirm Scribe All", MB_YESNO | MB_ICONQUESTION);
+        (L"Clear the entire spellbook and memorized spell gems for " + std::wstring(chr) + L"?").c_str(),
+        L"Confirm Clear Existing Spellbook", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
     if (r != IDYES) return;
-    int scribed = 0;
-    for (int i = 0; i < count; ++i) {
-        wchar_t item[512] = {};
-        SendMessageW(g_hwndSpellList, LB_GETTEXT, i, (LPARAM)item);
-        std::wstring spellStr = item;
-        auto colon = spellStr.find(L':');
-        if (colon == std::wstring::npos) continue;
-        std::wstring spellId = spellStr.substr(0, colon);
-        while (!spellId.empty() && spellId.back() == L' ') spellId.pop_back();
-        RunQuery(L"INSERT IGNORE INTO character_spells (id, slot_id, spell_id) VALUES ("
-                 L"(SELECT id FROM character_data WHERE LOWER(name)=LOWER('" +
-                 std::wstring(chr) + L"')), " + std::to_wstring(200 + i) + L", " + spellId + L")");
-        scribed++;
-    }
-    wchar_t buf[128]; swprintf_s(buf, L"Scribed %d spells to %s.", scribed, chr);
-    SetGameResult(buf);
+
+    ClearCharacterSpellbookRows(chr);
+    SetGameResult((L"Cleared spellbook and memorized spell gems for " + std::wstring(chr) + L".").c_str());
 }
 
 static void DoLoadFactions() {
@@ -5277,17 +5607,47 @@ static void CreateGameToolsPanel(HWND parent) {
     MakeLabel(parent, L"Item ID:", 450, y+4, 52, 20);
     g_hwndGameItemId = MakeEdit(parent, IDC_GAME_ITEM_ID, 506, y, 70, 24);
     MakeButton(parent, L"Give Item", IDC_BTN_GIVE_ITEM, 584, y, 80, 26);
+    MakeButton(parent, L"Load Item Editor", IDC_BTN_ITEM_LOAD, 670, y, 120, 26);
     y += 30;
 
-    // --- Spells ---
+    // --- Spells / Spellbook Builder ---
     MakeLabel(parent, L"Spells:", 20, y+4, 44, 20);
     g_hwndSpellSearch = MakeEdit(parent, IDC_SPELL_SEARCH, 68, y, 180, 24);
     MakeButton(parent, L"Search", IDC_BTN_SPELL_SEARCH, 256, y, 64, 26);
     MakeButton(parent, L"Scribe Selected", IDC_BTN_SCRIBE_SPELL, 326, y, 110, 26);
-    MakeButton(parent, L"Scribe All", IDC_BTN_SCRIBE_ALL, 442, y, 80, 26);
-    y += 26;
-    g_hwndSpellList = MakeListBox(parent, IDC_SPELL_LIST, 20, y, 560, 56);
-    y += 60;
+    MakeButton(parent, L"Scribe Loaded Spells", IDC_BTN_SCRIBE_ALL, 442, y, 138, 26);
+    y += 30;
+
+    HWND chkActualClass = MakeCheck(parent, L"Use Character's Actual Class", IDC_CHK_SPELL_USE_ACTUAL, 20, y+2, 190, 22);
+    SendMessage(chkActualClass, BM_SETCHECK, BST_CHECKED, 0);
+    MakeLabel(parent, L"Class:", 222, y+4, 36, 20);
+    g_hwndSpellClassCbo = MakeCombo(parent, IDC_SPELL_CLASS_COMBO, 262, y, 140, 220);
+    for (const wchar_t* className : CLASS_NAMES)
+        SendMessageW(g_hwndSpellClassCbo, CB_ADDSTRING, 0, (LPARAM)className);
+    SendMessage(g_hwndSpellClassCbo, CB_SETCURSEL, 11, 0); // Wizard
+    MakeLabel(parent, L"Min:", 414, y+4, 28, 20);
+    g_hwndSpellMinLevel = MakeCombo(parent, IDC_SPELL_MIN_LEVEL, 446, y, 58, 220);
+    MakeLabel(parent, L"Max:", 514, y+4, 30, 20);
+    g_hwndSpellMaxLevel = MakeCombo(parent, IDC_SPELL_MAX_LEVEL, 548, y, 58, 220);
+    for (int lvl = 1; lvl <= 65; ++lvl) {
+        wchar_t buf[8]; swprintf_s(buf, L"%d", lvl);
+        SendMessageW(g_hwndSpellMinLevel, CB_ADDSTRING, 0, (LPARAM)buf);
+        SendMessageW(g_hwndSpellMaxLevel, CB_ADDSTRING, 0, (LPARAM)buf);
+    }
+    SendMessage(g_hwndSpellMinLevel, CB_SETCURSEL, 0, 0);
+    SendMessage(g_hwndSpellMaxLevel, CB_SETCURSEL, 48, 0);
+    y += 30;
+
+    HWND chkMissing = MakeCheck(parent, L"Only Missing Spells", IDC_CHK_SPELL_ONLY_MISS, 20, y+2, 136, 22);
+    SendMessage(chkMissing, BM_SETCHECK, BST_CHECKED, 0);
+    MakeCheck(parent, L"Also Clear Before Scribing", IDC_CHK_SPELL_CLEAR_FIRST, 164, y+2, 170, 22);
+    MakeButton(parent, L"Load Matching Spells", IDC_BTN_LOAD_SPELLSET, 346, y, 128, 26);
+    MakeButton(parent, L"Clear Existing Spellbook", IDC_BTN_CLEAR_SPELLBOOK, 482, y, 154, 26);
+    y += 28;
+
+    g_hwndSpellList = MakeListBox(parent, IDC_SPELL_LIST, 20, y, 620, 70);
+    UpdateSpellbookBuilderClassMode();
+    y += 74;
 
     // --- Skills (Max All Skills after Load Skills) ---
     MakeLabel(parent, L"Skills:", 20, y+4, 42, 20);
@@ -5302,7 +5662,7 @@ static void CreateGameToolsPanel(HWND parent) {
     g_hwndSkillList = MakeListBox(parent, IDC_SKILL_LIST, 20, y, 560, 56);
     y += 60;
 
-    g_hwndGameResult = MakeResultBox(parent, IDC_GAME_RESULT, 20, y, 940, 120);
+    g_hwndGameResult = MakeResultBox(parent, IDC_GAME_RESULT, 20, y, 940, 88);
 }
 
 // ============================================================
@@ -5837,6 +6197,276 @@ static void DoProShowCurrency() {
     SetGameResult(std::wstring(L"Currency for '") + chr + L"':\r\n\r\n" + result);
 }
 
+static std::wstring GetControlText(HWND parent, int ctrlId) {
+    HWND hwnd = GetDlgItem(parent, ctrlId);
+    if (!hwnd) return L"";
+    int len = GetWindowTextLengthW(hwnd);
+    std::wstring text(len + 1, L'\0');
+    if (len > 0) {
+        GetWindowTextW(hwnd, &text[0], len + 1);
+    }
+    text.resize(len);
+    return text;
+}
+
+static int GetControlInt(HWND parent, int ctrlId) {
+    std::wstring text = GetControlText(parent, ctrlId);
+    return text.empty() ? 0 : _wtoi(text.c_str());
+}
+
+static double GetControlDouble(HWND parent, int ctrlId) {
+    std::wstring text = GetControlText(parent, ctrlId);
+    return text.empty() ? 0.0 : _wtof(text.c_str());
+}
+
+static void SetControlText(HWND parent, int ctrlId, const std::wstring& text) {
+    HWND hwnd = GetDlgItem(parent, ctrlId);
+    if (hwnd) SetWindowTextW(hwnd, text.c_str());
+}
+
+static void SetControlInt(HWND parent, int ctrlId, int value) {
+    SetControlText(parent, ctrlId, std::to_wstring(value));
+}
+
+static void SetControlDouble(HWND parent, int ctrlId, double value) {
+    wchar_t buf[64];
+    swprintf_s(buf, L"%.3f", value);
+    std::wstring text = buf;
+    while (text.find(L'.') != std::wstring::npos && !text.empty() && text.back() == L'0')
+        text.pop_back();
+    if (!text.empty() && text.back() == L'.')
+        text.pop_back();
+    SetControlText(parent, ctrlId, text);
+}
+
+static bool EnsureCustomItemVariantTable() {
+    if (TableExists(L"custom_item_variants")) return true;
+    RunQuery(L"CREATE TABLE IF NOT EXISTS custom_item_variants ("
+             L"item_id INT NOT NULL PRIMARY KEY, "
+             L"source_item_id INT NOT NULL)");
+    return TableExists(L"custom_item_variants");
+}
+
+static int GetCustomItemSourceId(int itemId) {
+    if (!EnsureCustomItemVariantTable()) return 0;
+    std::wstring out = TrimRight(RunQueryNoHeaders(
+        L"SELECT source_item_id FROM custom_item_variants WHERE item_id=" + std::to_wstring(itemId)));
+    if (out.empty() || out == L"(no results)") return 0;
+    return _wtoi(out.c_str());
+}
+
+static std::wstring GetItemNameById(int itemId) {
+    std::wstring out = TrimRight(RunQueryNoHeaders(
+        L"SELECT Name FROM items WHERE id=" + std::to_wstring(itemId)));
+    return out == L"(no results)" ? L"" : out;
+}
+
+static int GetNextCustomItemId() {
+    std::wstring out = TrimRight(RunQueryNoHeaders(
+        L"SELECT IFNULL(MAX(id)+1, 900000) FROM items WHERE id>=900000"));
+    int nextId = out.empty() ? 900000 : _wtoi(out.c_str());
+    return nextId < 900000 ? 900000 : nextId;
+}
+
+static bool CopyItemRowById(int sourceItemId, int destItemId, bool replaceExisting) {
+    std::vector<std::string> cols = GetTableColumns(L"items");
+    if (cols.empty()) return false;
+
+    std::wstring colList = L"`id`";
+    std::wstring selectList = std::to_wstring(destItemId);
+    for (const std::string& col : cols) {
+        if (col == "id") continue;
+        std::wstring wcol = ToWide(col);
+        colList += L", `" + wcol + L"`";
+        selectList += L", `" + wcol + L"`";
+    }
+    std::wstring verb = replaceExisting ? L"REPLACE INTO " : L"INSERT INTO ";
+    RunQuery(verb + L"items (" + colList + L") SELECT " + selectList +
+             L" FROM items WHERE id=" + std::to_wstring(sourceItemId));
+    return true;
+}
+
+static void DuplicateLootReferences(int sourceItemId, int newItemId) {
+    RunQuery(L"INSERT IGNORE INTO lootdrop_entries "
+             L"(lootdrop_id, item_id, item_charges, equip_item, chance, minlevel, maxlevel, multiplier, "
+             L"disabled_chance, min_expansion, max_expansion, min_looter_level, item_loot_lockout_timer, "
+             L"content_flags_disabled, content_flags) "
+             L"SELECT lootdrop_id, " + std::to_wstring(newItemId) + L", item_charges, equip_item, chance, minlevel, "
+             L"maxlevel, multiplier, disabled_chance, min_expansion, max_expansion, min_looter_level, "
+             L"item_loot_lockout_timer, content_flags_disabled, content_flags "
+             L"FROM lootdrop_entries WHERE item_id=" + std::to_wstring(sourceItemId));
+}
+
+static int GetNextMerchantSlot(int merchantId) {
+    std::wstring out = TrimRight(RunQueryNoHeaders(
+        L"SELECT IFNULL(MAX(slot)+1, 0) FROM merchantlist WHERE merchantid=" + std::to_wstring(merchantId)));
+    return out.empty() ? 0 : _wtoi(out.c_str());
+}
+
+static void DuplicateMerchantReferences(int sourceItemId, int newItemId) {
+    std::wstring sql =
+        L"SELECT merchantid, faction_required, level_required, alt_currency_cost, classes_required, "
+        L"probability, quantity, min_expansion, max_expansion, IFNULL(content_flags,''), "
+        L"IFNULL(content_flags_disabled,'') "
+        L"FROM merchantlist WHERE item=" + std::to_wstring(sourceItemId) + L" ORDER BY merchantid, slot";
+    std::string out = TrimRight(RunCommand(std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb -N -e \"" + sql + L"\" quarm"));
+    std::istringstream ss(out);
+    std::string line;
+    while (std::getline(ss, line)) {
+        line = TrimRight(line);
+        if (line.empty()) continue;
+        std::vector<std::string> row = SplitTabLine(line);
+        if (row.size() < 10) continue;
+        int merchantId = atoi(row[0].c_str());
+        int slot = GetNextMerchantSlot(merchantId);
+        std::wstring contentFlags = row.size() > 9 ? SqlEscape(ToWide(row[9])) : L"";
+        std::wstring disabledFlags = row.size() > 10 ? SqlEscape(ToWide(row[10])) : L"";
+        RunQuery(L"INSERT IGNORE INTO merchantlist "
+                 L"(merchantid, slot, item, faction_required, level_required, alt_currency_cost, classes_required, "
+                 L"probability, quantity, min_expansion, max_expansion, content_flags, content_flags_disabled) VALUES (" +
+                 std::to_wstring(merchantId) + L", " + std::to_wstring(slot) + L", " +
+                 std::to_wstring(newItemId) + L", " + ToWide(row[1]) + L", " + ToWide(row[2]) + L", " +
+                 ToWide(row[3]) + L", " + ToWide(row[4]) + L", " + ToWide(row[5]) + L", " +
+                 ToWide(row[6]) + L", " + ToWide(row[7]) + L", " + ToWide(row[8]) + L", '" +
+                 contentFlags + L"', '" + disabledFlags + L"')");
+    }
+}
+
+static void UpdateItemEditorState() {
+    if (!g_hwndItemEditor) return;
+    std::wstring status = L"No item loaded.";
+    std::wstring source;
+    if (g_itemEditorItemId > 0) {
+        status = L"Loaded Item ID: " + std::to_wstring(g_itemEditorItemId);
+        status += g_itemEditorIsCustom ? L"  (Custom Variant)" : L"  (Stock Item)";
+        if (g_itemEditorSourceItemId > 0)
+            source = L"Source Item ID: " + std::to_wstring(g_itemEditorSourceItemId);
+    }
+    SetControlText(g_hwndItemEditor, IDC_ITEM_STATUS_LABEL, status);
+    SetControlText(g_hwndItemEditor, IDC_ITEM_SOURCE_LABEL, source);
+
+    const int editIds[] = {
+        IDC_ITEM_EDIT_NAME, IDC_ITEM_EDIT_LORE, IDC_ITEM_EDIT_IDFILE, IDC_ITEM_EDIT_ICON,
+        IDC_ITEM_EDIT_PRICE, IDC_ITEM_EDIT_SELLRATE, IDC_ITEM_EDIT_WEIGHT, IDC_ITEM_EDIT_AC,
+        IDC_ITEM_EDIT_HP, IDC_ITEM_EDIT_MANA, IDC_ITEM_EDIT_ASTR, IDC_ITEM_EDIT_ASTA,
+        IDC_ITEM_EDIT_AAGI, IDC_ITEM_EDIT_ADEX, IDC_ITEM_EDIT_ACHA, IDC_ITEM_EDIT_AINT,
+        IDC_ITEM_EDIT_AWIS, IDC_ITEM_EDIT_CR, IDC_ITEM_EDIT_DR, IDC_ITEM_EDIT_FR,
+        IDC_ITEM_EDIT_MR, IDC_ITEM_EDIT_PR, IDC_ITEM_EDIT_DAMAGE, IDC_ITEM_EDIT_DELAY,
+        IDC_ITEM_EDIT_CLASSES, IDC_ITEM_EDIT_RACES, IDC_ITEM_EDIT_SLOTS, IDC_ITEM_EDIT_REQLEVEL,
+        IDC_ITEM_EDIT_RECLEVEL, IDC_ITEM_EDIT_MAXCHARGES, IDC_ITEM_EDIT_CLICKEFFECT,
+        IDC_ITEM_EDIT_PROCEFFECT, IDC_ITEM_EDIT_WORNEFFECT, IDC_ITEM_EDIT_FOCUSEFFECT
+    };
+    const int checkIds[] = {
+        IDC_ITEM_CHK_MAGIC, IDC_ITEM_CHK_LOREFLAG, IDC_ITEM_CHK_NODROP,
+        IDC_ITEM_CHK_NORENT, IDC_ITEM_CHK_ATTUNEABLE
+    };
+    bool editable = g_itemEditorIsCustom && g_itemEditorItemId > 0;
+    bool hasItem = g_itemEditorItemId > 0;
+
+    for (int id : editIds) {
+        if (HWND h = GetDlgItem(g_hwndItemEditor, id)) EnableWindow(h, editable);
+    }
+    for (int id : checkIds) {
+        if (HWND h = GetDlgItem(g_hwndItemEditor, id)) EnableWindow(h, editable);
+    }
+    EnableWindow(GetDlgItem(g_hwndItemEditor, IDC_BTN_ITEM_SAVE), editable);
+    EnableWindow(GetDlgItem(g_hwndItemEditor, IDC_BTN_ITEM_RESTORE), editable && g_itemEditorSourceItemId > 0);
+    EnableWindow(GetDlgItem(g_hwndItemEditor, IDC_BTN_ITEM_DELETE), editable);
+    EnableWindow(GetDlgItem(g_hwndItemEditor, IDC_BTN_ITEM_DUPLICATE), hasItem);
+}
+
+static void OpenItemEditorWindow() {
+    if (g_hwndItemEditor) {
+        ShowWindow(g_hwndItemEditor, SW_SHOWNORMAL);
+        SetForegroundWindow(g_hwndItemEditor);
+        return;
+    }
+
+    WNDCLASSEXW wc{};
+    wc.cbSize = sizeof(wc);
+    wc.lpfnWndProc = ItemEditorProc;
+    wc.hInstance = g_hInst;
+    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wc.lpszClassName = ITEM_EDITOR_CLASS;
+    RegisterClassExW(&wc);
+
+    g_hwndItemEditor = CreateWindowExW(
+        WS_EX_TOOLWINDOW, ITEM_EDITOR_CLASS, L"Custom Item Editor",
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+        CW_USEDEFAULT, CW_USEDEFAULT, 760, 700,
+        g_hwndMain, nullptr, g_hInst, nullptr);
+    ShowWindow(g_hwndItemEditor, SW_SHOWNORMAL);
+}
+
+static bool LoadItemIntoEditor(int itemId) {
+    if (itemId <= 0) return false;
+    OpenItemEditorWindow();
+
+    std::wstring sql =
+        L"SELECT Name, lore, idfile, icon, price, sellrate, weight, ac, hp, mana, astr, asta, "
+        L"aagi, adex, acha, aint, awis, cr, dr, fr, mr, pr, damage, delay, classes, races, slots, "
+        L"reqlevel, reclevel, maxcharges, clickeffect, proceffect, worneffect, focuseffect, magic, "
+        L"nodrop, norent, soulbound FROM items WHERE id=" + std::to_wstring(itemId);
+    std::string out = TrimRight(RunCommand(std::wstring(L"docker exec ") + CONTAINER +
+        L" mariadb -N -e \"" + sql + L"\" quarm"));
+    if (out.empty()) return false;
+    std::vector<std::string> row = SplitTabLine(out);
+    if (row.size() < 38) return false;
+
+    g_itemEditorItemId = itemId;
+    g_itemEditorSourceItemId = GetCustomItemSourceId(itemId);
+    g_itemEditorIsCustom = (g_itemEditorSourceItemId > 0);
+
+    SetControlText(g_hwndItemEditor, IDC_ITEM_EDIT_NAME, ToWide(row[0]));
+    std::wstring lore = ToWide(row[1]);
+    bool loreFlag = (!lore.empty() && lore.front() == L'*');
+    if (loreFlag) lore.erase(lore.begin());
+    SetControlText(g_hwndItemEditor, IDC_ITEM_EDIT_LORE, lore);
+    SetControlText(g_hwndItemEditor, IDC_ITEM_EDIT_IDFILE, ToWide(row[2]));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_ICON, atoi(row[3].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_PRICE, atoi(row[4].c_str()));
+    SetControlDouble(g_hwndItemEditor, IDC_ITEM_EDIT_SELLRATE, atof(row[5].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_WEIGHT, atoi(row[6].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_AC, atoi(row[7].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_HP, atoi(row[8].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_MANA, atoi(row[9].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_ASTR, atoi(row[10].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_ASTA, atoi(row[11].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_AAGI, atoi(row[12].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_ADEX, atoi(row[13].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_ACHA, atoi(row[14].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_AINT, atoi(row[15].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_AWIS, atoi(row[16].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_CR, atoi(row[17].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_DR, atoi(row[18].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_FR, atoi(row[19].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_MR, atoi(row[20].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_PR, atoi(row[21].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_DAMAGE, atoi(row[22].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_DELAY, atoi(row[23].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_CLASSES, atoi(row[24].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_RACES, atoi(row[25].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_SLOTS, atoi(row[26].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_REQLEVEL, atoi(row[27].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_RECLEVEL, atoi(row[28].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_MAXCHARGES, atoi(row[29].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_CLICKEFFECT, atoi(row[30].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_PROCEFFECT, atoi(row[31].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_WORNEFFECT, atoi(row[32].c_str()));
+    SetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_FOCUSEFFECT, atoi(row[33].c_str()));
+    SendMessage(GetDlgItem(g_hwndItemEditor, IDC_ITEM_CHK_MAGIC), BM_SETCHECK, atoi(row[34].c_str()) ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessage(GetDlgItem(g_hwndItemEditor, IDC_ITEM_CHK_NODROP), BM_SETCHECK, atoi(row[35].c_str()) ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessage(GetDlgItem(g_hwndItemEditor, IDC_ITEM_CHK_NORENT), BM_SETCHECK, atoi(row[36].c_str()) ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessage(GetDlgItem(g_hwndItemEditor, IDC_ITEM_CHK_ATTUNEABLE), BM_SETCHECK, atoi(row[37].c_str()) ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessage(GetDlgItem(g_hwndItemEditor, IDC_ITEM_CHK_LOREFLAG), BM_SETCHECK, loreFlag ? BST_CHECKED : BST_UNCHECKED, 0);
+    UpdateItemEditorState();
+    ShowWindow(g_hwndItemEditor, SW_SHOWNORMAL);
+    SetForegroundWindow(g_hwndItemEditor);
+    return true;
+}
+
 static void DoItemSearch() {
     wchar_t search[256] = {};
     GetWindowTextW(g_hwndGameItemSearch, search, 256);
@@ -5854,6 +6484,7 @@ static void DoItemSearch() {
 
     std::wstring sql;
     if (isNumeric) {
+        SetWindowTextW(g_hwndGameItemId, search);
         sql = L"SELECT id, Name, ItemType, Classes, Races, Slots, Price, StackSize "
               L"FROM items WHERE id=" + std::wstring(search);
     } else {
@@ -6011,6 +6642,182 @@ static void DoGiveItem() {
         SetGameResult(std::wstring(L"Item ") + itemStr + L" added to '" + chr +
             L"' in slot " + std::to_wstring(openSlot) + L".\r\n\r\n"
             L"Item will appear in inventory on next login.");
+}
+
+static void DoLoadItemEditor() {
+    if (!CheckServerRunning(L"Load Item Editor")) return;
+    wchar_t itemStr[32] = {};
+    GetWindowTextW(g_hwndGameItemId, itemStr, 32);
+    if (!itemStr[0]) {
+        MessageBoxW(g_hwndMain, L"Enter an item ID first.", L"Load Item Editor",
+            MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    for (wchar_t* p = itemStr; *p; ++p) {
+        if (!iswdigit(*p)) {
+            MessageBoxW(g_hwndMain, L"Item ID must be numeric.", L"Load Item Editor",
+                MB_OK | MB_ICONWARNING);
+            return;
+        }
+    }
+    int itemId = _wtoi(itemStr);
+    if (!LoadItemIntoEditor(itemId)) {
+        MessageBoxW(g_hwndMain, L"Item not found in the items table.", L"Load Item Editor",
+            MB_OK | MB_ICONWARNING);
+    }
+}
+
+static void DoDuplicateItemVariant() {
+    if (!CheckServerRunning(L"Duplicate as Custom Item")) return;
+    if (g_itemEditorItemId <= 0) {
+        MessageBoxW(g_hwndItemEditor ? g_hwndItemEditor : g_hwndMain,
+            L"Load an item first.", L"Duplicate as Custom Item", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    if (!EnsureCustomItemVariantTable()) {
+        MessageBoxW(g_hwndItemEditor ? g_hwndItemEditor : g_hwndMain,
+            L"Could not create the custom item metadata table.", L"Duplicate as Custom Item",
+            MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    int newItemId = GetNextCustomItemId();
+    std::wstring sourceName = GetItemNameById(g_itemEditorItemId);
+    if (sourceName.empty()) {
+        MessageBoxW(g_hwndItemEditor ? g_hwndItemEditor : g_hwndMain,
+            L"Source item could not be loaded.", L"Duplicate as Custom Item", MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    if (!CopyItemRowById(g_itemEditorItemId, newItemId, false)) {
+        MessageBoxW(g_hwndItemEditor ? g_hwndItemEditor : g_hwndMain,
+            L"Failed to duplicate the source item row.", L"Duplicate as Custom Item", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    std::wstring customName = L"Custom " + sourceName;
+    RunQuery(L"UPDATE items SET Name='" + SqlEscape(customName) + L"' WHERE id=" + std::to_wstring(newItemId));
+    RunQuery(L"REPLACE INTO custom_item_variants (item_id, source_item_id) VALUES (" +
+             std::to_wstring(newItemId) + L", " + std::to_wstring(g_itemEditorItemId) + L")");
+    DuplicateLootReferences(g_itemEditorItemId, newItemId);
+    DuplicateMerchantReferences(g_itemEditorItemId, newItemId);
+
+    LoadItemIntoEditor(newItemId);
+    SetWindowTextW(g_hwndGameItemId, std::to_wstring(newItemId).c_str());
+    SetGameResult(L"Custom item variant created.\r\n\r\n"
+                  L"It was duplicated into the 900000+ range and added alongside the original "
+                  L"in loot tables and merchant lists.");
+}
+
+static void DoSaveCustomItem() {
+    if (!CheckServerRunning(L"Save Item Changes")) return;
+    if (!g_itemEditorIsCustom || g_itemEditorItemId <= 0) return;
+
+    std::wstring name = GetControlText(g_hwndItemEditor, IDC_ITEM_EDIT_NAME);
+    if (name.empty()) {
+        MessageBoxW(g_hwndItemEditor, L"Name cannot be blank.", L"Save Item Changes",
+            MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    std::wstring lore = GetControlText(g_hwndItemEditor, IDC_ITEM_EDIT_LORE);
+    if (SendMessage(GetDlgItem(g_hwndItemEditor, IDC_ITEM_CHK_LOREFLAG), BM_GETCHECK, 0, 0) == BST_CHECKED &&
+        (lore.empty() || lore.front() != L'*')) {
+        lore = L"*" + lore;
+    }
+
+    int magic = SendMessage(GetDlgItem(g_hwndItemEditor, IDC_ITEM_CHK_MAGIC), BM_GETCHECK, 0, 0) == BST_CHECKED ? 1 : 0;
+    int nodrop = SendMessage(GetDlgItem(g_hwndItemEditor, IDC_ITEM_CHK_NODROP), BM_GETCHECK, 0, 0) == BST_CHECKED ? 1 : 0;
+    int norent = SendMessage(GetDlgItem(g_hwndItemEditor, IDC_ITEM_CHK_NORENT), BM_GETCHECK, 0, 0) == BST_CHECKED ? 1 : 0;
+    int soulbound = SendMessage(GetDlgItem(g_hwndItemEditor, IDC_ITEM_CHK_ATTUNEABLE), BM_GETCHECK, 0, 0) == BST_CHECKED ? 1 : 0;
+    std::wstring sellRate = GetControlText(g_hwndItemEditor, IDC_ITEM_EDIT_SELLRATE);
+    if (sellRate.empty()) sellRate = L"0";
+
+    std::wstring sql =
+        L"UPDATE items SET "
+        L"Name='" + SqlEscape(name) + L"', "
+        L"lore='" + SqlEscape(lore) + L"', "
+        L"idfile='" + SqlEscape(GetControlText(g_hwndItemEditor, IDC_ITEM_EDIT_IDFILE)) + L"', "
+        L"icon=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_ICON)) + L", "
+        L"price=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_PRICE)) + L", "
+        L"sellrate=" + sellRate + L", "
+        L"weight=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_WEIGHT)) + L", "
+        L"ac=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_AC)) + L", "
+        L"hp=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_HP)) + L", "
+        L"mana=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_MANA)) + L", "
+        L"astr=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_ASTR)) + L", "
+        L"asta=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_ASTA)) + L", "
+        L"aagi=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_AAGI)) + L", "
+        L"adex=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_ADEX)) + L", "
+        L"acha=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_ACHA)) + L", "
+        L"aint=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_AINT)) + L", "
+        L"awis=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_AWIS)) + L", "
+        L"cr=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_CR)) + L", "
+        L"dr=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_DR)) + L", "
+        L"fr=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_FR)) + L", "
+        L"mr=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_MR)) + L", "
+        L"pr=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_PR)) + L", "
+        L"damage=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_DAMAGE)) + L", "
+        L"delay=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_DELAY)) + L", "
+        L"classes=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_CLASSES)) + L", "
+        L"races=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_RACES)) + L", "
+        L"slots=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_SLOTS)) + L", "
+        L"reqlevel=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_REQLEVEL)) + L", "
+        L"reclevel=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_RECLEVEL)) + L", "
+        L"maxcharges=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_MAXCHARGES)) + L", "
+        L"clickeffect=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_CLICKEFFECT)) + L", "
+        L"proceffect=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_PROCEFFECT)) + L", "
+        L"worneffect=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_WORNEFFECT)) + L", "
+        L"focuseffect=" + std::to_wstring(GetControlInt(g_hwndItemEditor, IDC_ITEM_EDIT_FOCUSEFFECT)) + L", "
+        L"magic=" + std::to_wstring(magic) + L", "
+        L"nodrop=" + std::to_wstring(nodrop) + L", "
+        L"norent=" + std::to_wstring(norent) + L", "
+        L"soulbound=" + std::to_wstring(soulbound) + L" "
+        L"WHERE id=" + std::to_wstring(g_itemEditorItemId);
+    RunQuery(sql);
+    SetGameResult(L"Custom item changes saved.");
+}
+
+static void DoRestoreCustomItem() {
+    if (!CheckServerRunning(L"Restore Custom Item")) return;
+    if (!g_itemEditorIsCustom || g_itemEditorItemId <= 0 || g_itemEditorSourceItemId <= 0) return;
+    int r = MessageBoxW(g_hwndItemEditor,
+        L"Restore this custom item's stats and fields from its source item?\n\n"
+        L"The custom item ID and loot/merchant placements will stay the same.",
+        L"Restore to Default", MB_YESNO | MB_ICONQUESTION);
+    if (r != IDYES) return;
+
+    std::wstring customName = GetControlText(g_hwndItemEditor, IDC_ITEM_EDIT_NAME);
+    CopyItemRowById(g_itemEditorSourceItemId, g_itemEditorItemId, true);
+    RunQuery(L"UPDATE items SET Name='" + SqlEscape(customName) + L"' WHERE id=" +
+             std::to_wstring(g_itemEditorItemId));
+    LoadItemIntoEditor(g_itemEditorItemId);
+    SetGameResult(L"Custom item restored from its source item.");
+}
+
+static void DoDeleteCustomItem() {
+    if (!CheckServerRunning(L"Delete Custom Item")) return;
+    if (!g_itemEditorIsCustom || g_itemEditorItemId <= 0) return;
+    std::wstring warn =
+        L"Delete this custom item variant?\n\n"
+        L"This removes it from loot tables and merchant lists, deletes the custom item row,\n"
+        L"and removes its metadata. Existing copies on characters may become invalid.\n\nContinue?";
+    int r = MessageBoxW(g_hwndItemEditor, warn.c_str(), L"Delete Custom Item",
+        MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+    if (r != IDYES) return;
+
+    RunQuery(L"DELETE FROM lootdrop_entries WHERE item_id=" + std::to_wstring(g_itemEditorItemId));
+    RunQuery(L"DELETE FROM merchantlist WHERE item=" + std::to_wstring(g_itemEditorItemId));
+    RunQuery(L"DELETE FROM custom_item_variants WHERE item_id=" + std::to_wstring(g_itemEditorItemId));
+    RunQuery(L"DELETE FROM items WHERE id=" + std::to_wstring(g_itemEditorItemId));
+
+    g_itemEditorItemId = 0;
+    g_itemEditorSourceItemId = 0;
+    g_itemEditorIsCustom = false;
+    UpdateItemEditorState();
+    SetGameResult(L"Custom item deleted and removed from loot tables and merchant lists.");
+    if (g_hwndItemEditor)
+        DestroyWindow(g_hwndItemEditor);
 }
 
 static void DoSetEra() {
@@ -6357,6 +7164,130 @@ static void DoSetMarquee() {
     RunQuery(L"UPDATE tblloginserversettings SET value='" + safe + L"' WHERE type='ticker'");
     SetServerPanelResult(std::wstring(L"Login marquee set to '") + msg + L"'.\r\n\r\n"
          L"Reconnect to the server select screen to see the change.");
+}
+
+static LRESULT CALLBACK ItemEditorProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    switch (msg) {
+    case WM_CREATE: {
+        g_hwndItemEditor = hwnd;
+        auto addEdit = [&](int x, int y, int w, int id, int h = 22) {
+            HWND e = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
+                WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+                x, y, w, h, hwnd, (HMENU)(UINT_PTR)id, g_hInst, nullptr);
+            if (g_hFont) SendMessage(e, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+            return e;
+        };
+        auto addCheck = [&](const wchar_t* text, int x, int y, int w, int id) {
+            HWND c = CreateWindowExW(0, L"BUTTON", text,
+                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                x, y, w, 20, hwnd, (HMENU)(UINT_PTR)id, g_hInst, nullptr);
+            if (g_hFont) SendMessage(c, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+            return c;
+        };
+        auto addBtn = [&](const wchar_t* text, int x, int y, int w, int id) {
+            HWND b = CreateWindowExW(0, L"BUTTON", text,
+                WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                x, y, w, 24, hwnd, (HMENU)(UINT_PTR)id, g_hInst, nullptr);
+            if (g_hFont) SendMessage(b, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+            return b;
+        };
+        auto addLabel = [&](const wchar_t* text, int x, int y, int w, int h = 18, int id = 0) {
+            HWND s = CreateWindowExW(0, L"STATIC", text,
+                WS_CHILD | WS_VISIBLE,
+                x, y, w, h, hwnd, (HMENU)(UINT_PTR)id, g_hInst, nullptr);
+            if (g_hFont) SendMessage(s, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+            return s;
+        };
+
+        int y = 12;
+        addLabel(L"No item loaded.", 12, y, 430, 18, IDC_ITEM_STATUS_LABEL);
+        addLabel(L"", 450, y, 280, 18, IDC_ITEM_SOURCE_LABEL);
+        y += 28;
+
+        addLabel(L"Name", 12, y, 60);          addEdit(70, y - 2, 250, IDC_ITEM_EDIT_NAME);
+        addLabel(L"Lore", 334, y, 40);         addEdit(378, y - 2, 340, IDC_ITEM_EDIT_LORE);
+        y += 28;
+        addLabel(L"IDFile", 12, y, 60);        addEdit(70, y - 2, 140, IDC_ITEM_EDIT_IDFILE);
+        addLabel(L"Icon", 224, y, 36);         addEdit(264, y - 2, 56, IDC_ITEM_EDIT_ICON);
+        addLabel(L"Price", 334, y, 36);        addEdit(378, y - 2, 88, IDC_ITEM_EDIT_PRICE);
+        addLabel(L"SellRate", 480, y, 52);     addEdit(538, y - 2, 76, IDC_ITEM_EDIT_SELLRATE);
+        addLabel(L"Weight", 626, y, 44);       addEdit(674, y - 2, 44, IDC_ITEM_EDIT_WEIGHT);
+        y += 28;
+
+        auto addTriplet = [&](const wchar_t* a, int aid, const wchar_t* b, int bid,
+                              const wchar_t* c, int cid, int rowY, int x = 12) {
+            addLabel(a, x, rowY, 34);  addEdit(x + 36, rowY - 2, 52, aid);
+            addLabel(b, x + 104, rowY, 34); addEdit(x + 140, rowY - 2, 52, bid);
+            addLabel(c, x + 208, rowY, 34); addEdit(x + 244, rowY - 2, 52, cid);
+        };
+        addTriplet(L"AC", IDC_ITEM_EDIT_AC, L"HP", IDC_ITEM_EDIT_HP, L"Mana", IDC_ITEM_EDIT_MANA, y);
+        y += 28;
+        addTriplet(L"STR", IDC_ITEM_EDIT_ASTR, L"STA", IDC_ITEM_EDIT_ASTA, L"AGI", IDC_ITEM_EDIT_AAGI, y);
+        addTriplet(L"DEX", IDC_ITEM_EDIT_ADEX, L"CHA", IDC_ITEM_EDIT_ACHA, L"INT", IDC_ITEM_EDIT_AINT, y, 324);
+        y += 28;
+        addLabel(L"WIS", 12, y, 30); addEdit(48, y - 2, 52, IDC_ITEM_EDIT_AWIS);
+        addLabel(L"Classes", 116, y, 46); addEdit(166, y - 2, 86, IDC_ITEM_EDIT_CLASSES);
+        addLabel(L"Races", 268, y, 40); addEdit(312, y - 2, 86, IDC_ITEM_EDIT_RACES);
+        addLabel(L"Slots", 414, y, 36); addEdit(454, y - 2, 72, IDC_ITEM_EDIT_SLOTS);
+        addLabel(L"Req", 540, y, 24); addEdit(568, y - 2, 50, IDC_ITEM_EDIT_REQLEVEL);
+        addLabel(L"Rec", 632, y, 24); addEdit(660, y - 2, 58, IDC_ITEM_EDIT_RECLEVEL);
+        y += 28;
+
+        addTriplet(L"CR", IDC_ITEM_EDIT_CR, L"DR", IDC_ITEM_EDIT_DR, L"FR", IDC_ITEM_EDIT_FR, y);
+        addLabel(L"MR", 324, y, 24); addEdit(352, y - 2, 52, IDC_ITEM_EDIT_MR);
+        addLabel(L"PR", 420, y, 24); addEdit(448, y - 2, 52, IDC_ITEM_EDIT_PR);
+        y += 28;
+
+        addLabel(L"Dmg", 12, y, 30); addEdit(46, y - 2, 54, IDC_ITEM_EDIT_DAMAGE);
+        addLabel(L"Delay", 116, y, 34); addEdit(154, y - 2, 50, IDC_ITEM_EDIT_DELAY);
+        addLabel(L"Charges", 314, y, 48); addEdit(366, y - 2, 56, IDC_ITEM_EDIT_MAXCHARGES);
+        addLabel(L"Click", 438, y, 32); addEdit(474, y - 2, 60, IDC_ITEM_EDIT_CLICKEFFECT);
+        addLabel(L"Proc", 548, y, 30); addEdit(582, y - 2, 50, IDC_ITEM_EDIT_PROCEFFECT);
+        addLabel(L"Worn", 644, y, 32); addEdit(680, y - 2, 38, IDC_ITEM_EDIT_WORNEFFECT);
+        y += 28;
+
+        addLabel(L"Focus", 12, y, 36); addEdit(52, y - 2, 60, IDC_ITEM_EDIT_FOCUSEFFECT);
+        addCheck(L"Magic", 132, y, 64, IDC_ITEM_CHK_MAGIC);
+        addCheck(L"Lore Flag", 210, y, 86, IDC_ITEM_CHK_LOREFLAG);
+        addCheck(L"No Drop", 310, y, 78, IDC_ITEM_CHK_NODROP);
+        addCheck(L"No Rent", 400, y, 78, IDC_ITEM_CHK_NORENT);
+        addCheck(L"Attuneable", 492, y, 96, IDC_ITEM_CHK_ATTUNEABLE);
+        y += 34;
+
+        addBtn(L"Save Changes", 12, y, 112, IDC_BTN_ITEM_SAVE);
+        addBtn(L"Restore to Default", 132, y, 132, IDC_BTN_ITEM_RESTORE);
+        addBtn(L"Delete Custom Item", 272, y, 132, IDC_BTN_ITEM_DELETE);
+        addBtn(L"Duplicate as Custom", 412, y, 132, IDC_BTN_ITEM_DUPLICATE);
+        addBtn(L"Close", 552, y, 92, IDC_BTN_ITEM_CLOSE);
+        addLabel(L"Stock items are read-only. Duplicate them into the 900000+ range before editing.",
+                 12, y + 34, 700, 18);
+
+        UpdateItemEditorState();
+        return 0;
+    }
+
+    case WM_COMMAND:
+        switch (LOWORD(wp)) {
+        case IDC_BTN_ITEM_SAVE:      DoSaveCustomItem();      return 0;
+        case IDC_BTN_ITEM_RESTORE:   DoRestoreCustomItem();   return 0;
+        case IDC_BTN_ITEM_DELETE:    DoDeleteCustomItem();    return 0;
+        case IDC_BTN_ITEM_DUPLICATE: DoDuplicateItemVariant();return 0;
+        case IDC_BTN_ITEM_CLOSE:     DestroyWindow(hwnd);     return 0;
+        }
+        break;
+
+    case WM_CLOSE:
+        DestroyWindow(hwnd);
+        return 0;
+
+    case WM_DESTROY:
+        g_hwndItemEditor = nullptr;
+        g_itemEditorItemId = 0;
+        g_itemEditorSourceItemId = 0;
+        g_itemEditorIsCustom = false;
+        return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
 
@@ -6904,6 +7835,7 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
         // --- PRO TOOLS TAB ---
         case IDC_BTN_ITEM_SEARCH:        DoItemSearch();         break;
+        case IDC_BTN_ITEM_LOAD:          DoLoadItemEditor();     break;
         case IDC_BTN_GIVE_ITEM:          DoGiveItem();           break;
         case IDC_BTN_PRO_GIVE_PLAT:      DoProGivePlatinum();    break;
         case IDC_BTN_PRO_SET_LEVEL:      DoSetCharLevel();       break;
@@ -6953,9 +7885,12 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
         // --- PRO TOOLS: Spawn, Spells, Factions, Skills ---
         case IDC_BTN_SPAWN_BOSS:         DoSpawnBoss();          break;
+        case IDC_CHK_SPELL_USE_ACTUAL:  UpdateSpellbookBuilderClassMode(); break;
         case IDC_BTN_SPELL_SEARCH:       DoSpellSearch();        break;
+        case IDC_BTN_LOAD_SPELLSET:      DoLoadSpellSet();       break;
         case IDC_BTN_SCRIBE_SPELL:       DoScribeSpell();        break;
         case IDC_BTN_SCRIBE_ALL:         DoScribeAll();          break;
+        case IDC_BTN_CLEAR_SPELLBOOK:    DoClearSpellbook();     break;
         case IDC_BTN_LOAD_FACTIONS:      DoLoadFactions();       break;
         case IDC_BTN_SET_FACTION:        DoSetFaction();         break;
         case IDC_BTN_FACTION_ALLY:       DoSetFaction(2000);     break;
