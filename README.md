@@ -83,16 +83,16 @@ Open the **Quarm Docker Server** app from your desktop shortcut. All server mana
 ## Customizing Your Server
 
 ### Server Name
-The server name is what players see on the server select screen. To change it, go to the **Status** tab, edit the **Server Name** field, and click **Set Name**. A server restart is required for the change to take effect.
+The server name is what players see on the server select screen. To change it, go to the **Server** tab, edit the **Server Name** field, and click **Set Name**. A server restart is required for the change to take effect.
 
 ### Login Screen Marquee
-The scrolling message players see on the login screen can be changed on the **Status** tab. Edit the **Login Marquee** field and click **Set Marquee**. A server restart is required.
+The scrolling message players see on the login screen can be changed on the **Server** tab. Edit the **Login Marquee** field and click **Set Marquee**. A server restart is required.
 
 ### Message of the Day
-The in-game MOTD is shown to players when they zone. Edit the **MOTD** field on the **Status** tab and click **Set MOTD**. This takes effect on the next zone-in and does not require a restart.
+The in-game MOTD is shown to players when they zone. Edit the **MOTD** field on the **Server** tab and click **Set MOTD**. This takes effect on the next zone-in and does not require a restart.
 
 ### Server Era
-Select an era from the dropdown on the **Status** tab and click **Set Era**. This restricts zone access and expansion flags to the chosen era. A server restart is required. Characters in zones that become restricted will be moved to a safe zone (typically East Commons) on their next login.
+Select an era from the dropdown on the **Server** tab and click **Set Era**. This restricts zone access and expansion flags to the chosen era. A server restart is required. Characters in zones that become restricted will be moved to a safe zone (typically East Commons) on their next login.
 
 ### Spellbook Builder
 On the **Pro Tools** tab, the spell section now includes a **Spellbook Builder** for rebuilding or filling out a character's spellbook without manually searching for every spell.
