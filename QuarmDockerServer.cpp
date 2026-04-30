@@ -126,7 +126,7 @@ namespace fs = std::filesystem;
 
 static const wchar_t* APP_CLASS   = L"QuarmServerManager";
 static const wchar_t* APP_TITLE   = L"Quarm Docker Server";
-static const wchar_t* APP_VERSION = L"v0.999";
+static const wchar_t* APP_VERSION = L"v1.000";
 static const wchar_t* PANEL_CLASS = L"QSMPanel";
 static const wchar_t* ITEM_EDITOR_CLASS = L"QSMItemEditor";
 static const wchar_t* CONTAINER   = L"quarm-server";
