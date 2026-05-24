@@ -126,7 +126,7 @@ namespace fs = std::filesystem;
 
 static const wchar_t* APP_CLASS   = L"QuarmServerManager";
 static const wchar_t* APP_TITLE   = L"Quarm Docker Server";
-static const wchar_t* APP_VERSION = L"v1.000";
+static const wchar_t* APP_VERSION = L"v1.001";
 static const wchar_t* PANEL_CLASS = L"QSMPanel";
 static const wchar_t* ITEM_EDITOR_CLASS = L"QSMItemEditor";
 static const wchar_t* CONTAINER   = L"quarm-server";
@@ -7075,11 +7075,32 @@ static void DoLoadMarquee() {
         SetWindowTextW(g_hwndMarqueeEdit, val.c_str());
 }
 
+// Helper: extract the "longname" string value from an eqemu_config.json blob.
+// Returns empty wstring if the field can't be located.
+static std::wstring ExtractLongnameFromJson(const std::string& json) {
+    auto p = json.find("\"longname\"");
+    if (p == std::string::npos) return L"";
+    p = json.find(':', p);
+    if (p == std::string::npos) return L"";
+    p = json.find('"', p);
+    if (p == std::string::npos) return L"";
+    auto e = json.find('"', p + 1);
+    if (e == std::string::npos) return L"";
+    return ToWide(json.substr(p + 1, e - p - 1));
+}
+
 static void DoSetServerName() {
+    if (g_operationBusy) {
+        MessageBoxW(g_hwndMain, L"Another operation is in progress. Please wait.",
+            L"Server Name", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+
     wchar_t name[256] = {};
     if (g_hwndServerNameEdit) GetWindowTextW(g_hwndServerNameEdit, name, 256);
     if (!name[0]) {
-        MessageBoxW(g_hwndMain, L"Enter a server name first.", L"Server Name", MB_OK | MB_ICONINFORMATION);
+        MessageBoxW(g_hwndMain, L"Enter a server name first.",
+            L"Server Name", MB_OK | MB_ICONINFORMATION);
         return;
     }
     int r = MessageBoxW(g_hwndMain,
@@ -7090,20 +7111,32 @@ static void DoSetServerName() {
         L"Confirm Server Name Change", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
     if (r != IDYES) return;
     if (!IsContainerRunning()) {
-        SetServerPanelResult(L"Failed: server must be running to update /src/build/bin/eqemu_config.json inside the container.");
+        SetServerPanelResult(L"Failed: server must be running to update "
+            L"/src/build/bin/eqemu_config.json inside the container.");
         return;
     }
 
+    // Diagnostic log accumulated across every step so a failure point is visible
+    // in the result box without needing logs or a debugger.
+    std::wstring log;
+    log += L"Set 'longname' to: " + std::wstring(name) + L"\r\n";
+
+    // 1. Read the current config.
     std::string content = RunCommand(
-        std::wstring(L"docker exec ") + CONTAINER + L" cat /src/build/bin/eqemu_config.json");
+        std::wstring(L"docker exec ") + CONTAINER +
+        L" cat /src/build/bin/eqemu_config.json");
     if (content.empty()) {
-        SetServerPanelResult(
-            L"Failed: could not read /src/build/bin/eqemu_config.json from the running container.");
+        SetServerPanelResult(log +
+            L"FAILED: could not read /src/build/bin/eqemu_config.json "
+            L"from the running container.\r\n");
         return;
     }
+
+    // 2. Splice in the new longname value.
     auto pos = content.find("\"longname\"");
     if (pos == std::string::npos) {
-        SetServerPanelResult(L"Failed: \"longname\" not found in /src/build/bin/eqemu_config.json.");
+        SetServerPanelResult(log +
+            L"FAILED: \"longname\" not found in eqemu_config.json.\r\n");
         return;
     }
     pos = content.find(':', pos);
@@ -7112,24 +7145,109 @@ static void DoSetServerName() {
     std::string newName(name, name + wcslen(name));
     content = content.substr(0, pos + 1) + newName + content.substr(end);
 
+    // 3. Write the modified JSON to a local temp file.
     wchar_t tempPath[MAX_PATH];
     wcscpy_s(tempPath, g_installDir);
     PathAppendW(tempPath, L"eqemu_config.container.tmp.json");
     if (!WriteTextFileWide(tempPath, ToWide(content))) {
-        SetServerPanelResult(std::wstring(L"Failed: could not write temp file ") + tempPath);
+        SetServerPanelResult(log + L"FAILED: could not write temp file " +
+            tempPath + L"\r\n");
         return;
     }
+    log += L"Wrote temp file: " + std::wstring(tempPath) + L"\r\n";
 
+    // 4. docker cp into the container, capturing both exit code and output.
     DWORD copyOutEc = 0;
-    RunCommand(std::wstring(L"docker cp \"") + tempPath + L"\" " + CONTAINER +
-               L":/src/build/bin/eqemu_config.json", g_installDir, &copyOutEc);
+    std::string cpOut = RunCommand(
+        std::wstring(L"docker cp \"") + tempPath + L"\" " + CONTAINER +
+        L":/src/build/bin/eqemu_config.json", g_installDir, &copyOutEc);
+    log += L"docker cp exit code: " + std::to_wstring(copyOutEc) + L"\r\n";
+    std::wstring cpOutW = TrimRight(NormalizeNewlines(ToWide(cpOut)));
+    if (!cpOutW.empty())
+        log += L"docker cp output: " + cpOutW + L"\r\n";
     if (copyOutEc != 0) {
-        SetServerPanelResult(L"Failed: could not copy updated eqemu_config.json into the container.");
+        SetServerPanelResult(log +
+            L"FAILED: docker cp returned a non-zero exit code.\r\n");
         return;
     }
 
-    SetServerPanelResult(std::wstring(L"Server name set to '") + name + L"'.\r\n\r\nRestarting server...");
-    DoRestartServerAsync();
+    // 5. Read the file BACK from the container and verify the new longname
+    //    is actually there before we restart.
+    std::string verifyContent = RunCommand(
+        std::wstring(L"docker exec ") + CONTAINER +
+        L" cat /src/build/bin/eqemu_config.json");
+    std::wstring verifyName = ExtractLongnameFromJson(verifyContent);
+    bool preMatches = (verifyName == std::wstring(name));
+    log += L"Read-back before restart: longname = \"" + verifyName + L"\"  " +
+           (preMatches ? L"OK" : L"MISMATCH") + L"\r\n";
+    if (!preMatches) {
+        SetServerPanelResult(log +
+            L"FAILED: file inside the container does not contain the new name "
+            L"after docker cp. Not restarting.\r\n");
+        return;
+    }
+
+    log += L"Restarting server...\r\n";
+    SetServerPanelResult(log);
+
+    // 6. Restart in a worker thread, then do a final read-back and post the
+    //    accumulated diagnostic to the Server tab.
+    //
+    // IMPORTANT: use `docker restart` (not `docker compose down` + `up -d`).
+    // `compose down` removes the container; `up -d` then creates a NEW one
+    // from the image, and the image's /src/build/bin/eqemu_config.json was
+    // baked in by init.sh at image build time with longname = "New Devbox".
+    // That overwrites the docker cp change made above. `docker restart`
+    // keeps the same container, so the file change persists, and the
+    // entrypoint re-runs without touching longname.
+    SetBusy(true);
+    SetStatus(L"Restarting server...");
+    bool noBackup = GetNoBackupOnStop();
+    std::wstring wantedName = name;
+
+    std::thread([log, wantedName, noBackup]{
+        std::wstring finalLog = log;
+
+        if (!noBackup) {
+            wchar_t bd[MAX_PATH]; wcscpy_s(bd, g_installDir);
+            PathAppendW(bd, L"config\\backups");
+            CreateDirectoryW(bd, nullptr);
+            std::wstring ds = GetDateStamp();
+            wchar_t ff[MAX_PATH]; wcscpy_s(ff, bd);
+            PathAppendW(ff, (L"backup_" + ds + L".sql").c_str());
+            std::wstring cmd = L"cmd /c docker exec " + std::wstring(CONTAINER) +
+                L" mariadb-dump quarm > \"" + std::wstring(ff) + L"\"";
+            RunCommand(cmd, g_installDir);
+        }
+
+        RunCommand(std::wstring(L"docker restart ") + CONTAINER, g_installDir);
+
+        // Safety net: docker restart blocks until the container is up, but
+        // keep the wait loop in case of slow Docker Desktop responses.
+        for (int i = 0; i < 60; ++i) {
+            if (IsContainerRunning()) break;
+            Sleep(500);
+        }
+        // Grace period for the world server processes to finish booting
+        // and re-read the config file.
+        Sleep(2000);
+
+        std::string postContent = RunCommand(
+            std::wstring(L"docker exec ") + CONTAINER +
+            L" cat /src/build/bin/eqemu_config.json");
+        std::wstring postName = ExtractLongnameFromJson(postContent);
+        bool postMatches = (postName == wantedName);
+        finalLog += L"Read-back after restart:  longname = \"" + postName + L"\"  " +
+                    (postMatches
+                        ? L"OK"
+                        : L"MISMATCH - container start overwrote the change") +
+                    L"\r\n";
+        finalLog += postMatches ? L"Done." :
+            L"Done (post-restart value differs from what was set).";
+
+        auto* res = new AsyncResult{ postMatches, finalLog };
+        PostMessageW(g_hwndMain, WM_ASYNC_DONE, TAB_SERVER, (LPARAM)res);
+    }).detach();
 }
 
 static void DoSetMarquee() {
